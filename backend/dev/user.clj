@@ -14,6 +14,7 @@
    [app.common.perf :as perf]
    [app.common.pprint :as pp]
    [app.common.transit :as t]
+   [app.common.uuid :as uuid]
    [app.config :as cfg]
    [app.main :as main]
    [app.srepl.main :as srepl]
@@ -237,3 +238,10 @@
                                 {}
                                 index))))))
 
+
+(def test1
+  (delay
+    (let [obj1 (penpot.ConstantMap/createEmpty blob/encode blob/decode)
+          obj2 (.set obj1 (uuid/custom 0 1) {:foo 1})
+          obj3 (.set obj2 (uuid/custom 0 2) {:bar 1})]
+      obj3)))
