@@ -12,6 +12,7 @@
    [app.main.ui.viewer.handoff.attributes.fill :refer [fill-panel]]
    [app.main.ui.viewer.handoff.attributes.image :refer [image-panel]]
    [app.main.ui.viewer.handoff.attributes.layout :refer [layout-panel]]
+   [app.main.ui.viewer.handoff.attributes.layout-flex :refer [layout-flex-panel]]
    [app.main.ui.viewer.handoff.attributes.shadow :refer [shadow-panel]]
    [app.main.ui.viewer.handoff.attributes.stroke :refer [stroke-panel]]
    [app.main.ui.viewer.handoff.attributes.svg :refer [svg-panel]]
@@ -21,7 +22,7 @@
 
 (def type->options
   {:multiple [:fill :stroke :image :text :shadow :blur]
-   :frame    [:layout :fill :stroke :shadow :blur]
+   :frame    [:layout :fill :stroke :shadow :blur :layout-flex]
    :group    [:layout :svg]
    :rect     [:layout :fill :stroke :shadow :blur :svg]
    :circle   [:layout :fill :stroke :shadow :blur :svg]
@@ -35,11 +36,13 @@
         shapes  (mf/with-memo [shapes]
                   (mapv #(gsh/translate-to-frame % frame) shapes))
         type    (if (= (count shapes) 1) (-> shapes first :type) :multiple)
-        options (type->options type)]
+        options (type->options type)
+        _ (.log js/console (clj->js shapes))]
     [:div.element-options
      (for [option options]
        [:> (case option
              :layout layout-panel
+             :layout-flex layout-flex-panel
              :fill   fill-panel
              :stroke stroke-panel
              :shadow shadow-panel
