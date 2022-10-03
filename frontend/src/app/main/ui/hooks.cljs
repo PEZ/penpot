@@ -22,11 +22,6 @@
    [goog.functions :as f]
    [rumext.v2 :as mf]))
 
-(defn use-id
-  "Get a stable id value across rerenders."
-  []
-  (mf/use-memo #(dm/str (uuid/next))))
-
 (defn use-rxsub
   [ob]
   (let [[state reset-state!] (mf/useState #(if (satisfies? IDeref ob) @ob nil))]
@@ -298,7 +293,7 @@
   localStorage. And it will keep watching events with type equals to
   `key` for new values."
   [key default]
-  (let [id     (use-id)
+  (let [id     (mf/use-id)
         state  (mf/use-state (get @storage key default))
         stream (mf/with-memo [id]
                  (->> mbc/stream
