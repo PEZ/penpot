@@ -43,19 +43,38 @@
                      :default :row)
         _ (prn flex-dir)
         ]
-    [:* 
-      [:div.attributes-unit-row
-       [:div.attributes-label "Flex direction"]
-       [:div.attributes-value (str flex-dir)]
-       [:& copy-button {:data (copy-data shape :layout-dir)}]]
-     ]))
+    [:*
+     [:div.attributes-unit-row
+      [:div.attributes-label "Display"] ;; TODO traduc
+      [:div.attributes-value "Flex"] ;; TODO change data to separate flex-grid
+      [:& copy-button {:data (copy-data shape :layout-dir)}]]
+     [:div.attributes-unit-row
+      [:div.attributes-label "Direction"] ;; TODO traduc
+      [:div.attributes-value (str flex-dir)]
+      [:& copy-button {:data (copy-data shape :layout-dir)}]]
+     [:div.attributes-unit-row
+      [:div.attributes-label "Wrap"] ;; TODO traduc
+      [:div.attributes-value (str (:layout-wrap-type shape))]
+      [:& copy-button {:data (copy-data shape :layout-dir)}]]
+     [:div.attributes-unit-row
+      [:div.attributes-label "Align-items"] ;; TODO traduc
+      [:div.attributes-value "todo"]
+      [:& copy-button {:data (copy-data shape :layout-dir)}]]
+     [:div.attributes-unit-row
+      [:div.attributes-label "Justify-content"] ;; TODO traduc
+      [:div.attributes-value "todo"]
+      [:& copy-button {:data (copy-data shape :layout-dir)}]]
+     [:div.attributes-unit-row
+      [:div.attributes-label "Gap"] ;; TODO traduc
+      [:div.attributes-value (:layout-gap shape)]
+      [:& copy-button {:data (copy-data shape :layout-dir)}]]]))
 
 
 (mf/defc layout-flex-panel
   [{:keys [shapes]}]
   [:div.attributes-block
    [:div.attributes-block-title
-    [:div.attributes-block-title-text "Flex layout"]
+    [:div.attributes-block-title-text (tr "handoff.attributes.layout")]
     (when (= (count shapes) 1)
       [:& copy-button {:data (copy-data (first shapes))}])]
 

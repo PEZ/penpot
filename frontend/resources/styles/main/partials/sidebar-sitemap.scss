@@ -156,6 +156,44 @@
   }
 }
 
+.title-actions {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  margin-left: auto;
+  padding: $size-1;
+  .layout-btns {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+  }
+  button {
+    background-color: transparent;
+    border-radius: $br-small;
+    border: 1px solid transparent;
+    cursor: pointer;
+    color: $color-gray-20;
+    svg {
+      fill: $color-gray-20;
+      height: 0.7rem;
+      width: 0.7rem;
+    }
+    &.active {
+      color: $color-primary;
+    }
+  
+    &:hover {
+      background-color: $color-primary;
+      color: $color-gray-60;
+      svg {
+        fill: $color-gray-60 !important;
+      }
+    }
+  }
+}
+
+
+
 .element-set-title-actions {
   display: flex;
   flex-direction: row;

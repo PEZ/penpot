@@ -1594,43 +1594,83 @@
     width: 16px;
     fill: $color-gray-30;
   }
-  .direction-gap {
-    display: flex;
-    justify-content: space-between;
-    .direction {
+  .layout-row {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    margin-bottom: 5px;
+    .row-title {
+      font-size: $fs12;
       display: flex;
-      .dir {
-        margin-right: 4px;
+      justify-content: start;
+      align-items: center;
+      margin-right: 5px;
+    }
+    .btn-wrapper {
+      display: flex;
+      .direction,
+      .wrap-style,
+      .align-items-style,
+      .justify-content-style {
         display: flex;
-        justify-content: center;
-        align-items: center;
-        background: none;
-        border: none;
-        cursor: pointer;
+        border-radius: 4px;
+        border: 1px solid $color-gray-60;
+        height: 26px;
+        margin-right: 5px;
+        button {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background: none;
+          border: none;
+          cursor: pointer;
+          border-right: 1px solid $color-gray-60;
+          &.active,
+          &:hover {
+            svg {
+              fill: $color-primary;
+            }
+          }
+        }
+        .dir {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background: none;
+          border: none;
+          cursor: pointer;
+          border-right: 1px solid $color-gray-60;
 
-        &.right {
-          svg {
-            transform: rotate(180deg);
+          &.reverse-row {
+            svg {
+              transform: rotate(180deg);
+            }
+          }
+
+          &.reverse-column {
+            svg {
+              transform: rotate(-90deg);
+            }
+          }
+          &.column {
+            svg {
+              transform: rotate(90deg);
+            }
+          }
+          &.active,
+          &:hover {
+            svg {
+              fill: $color-primary;
+            }
           }
         }
-        &.top {
-          svg {
-            transform: rotate(-90deg);
-          }
-        }
-        &.bottom {
-          svg {
-            transform: rotate(90deg);
-          }
-        }
-        &.active,
-        &:hover {
-          svg {
-            fill: $color-primary;
-          }
+        :last-child {
+          border-right: none;
         }
       }
     }
+  }
+  .gap-group {
+    display: flex;
     .gap {
       display: flex;
       justify-content: center;

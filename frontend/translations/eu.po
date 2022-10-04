@@ -3548,19 +3548,19 @@ msgid "workspace.options.layout.bottom"
 msgstr "Behean"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.bottom"
+msgid "workspace.options.layout.direction.column"
 msgstr "Zutabea"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.left"
+msgid "workspace.options.layout.direction.row"
 msgstr "Lerroa"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.right"
+msgid "workspace.options.layout.direction.reverse-row"
 msgstr "Alderantzikatu lerroa"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.top"
+msgid "workspace.options.layout.direction.reverse-column"
 msgstr "Alderantzikatu zutabea"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs

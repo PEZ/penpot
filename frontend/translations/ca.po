@@ -3581,19 +3581,19 @@ msgid "workspace.options.layout.bottom"
 msgstr "Baix"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.bottom"
+msgid "workspace.options.layout.direction.column"
 msgstr "Columna"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.left"
+msgid "workspace.options.layout.direction.row"
 msgstr "Fila"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.right"
+msgid "workspace.options.layout.direction.reverse-row"
 msgstr "Fila invertida"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
-msgid "workspace.options.layout.direction.top"
+msgid "workspace.options.layout.direction.reverse-column"
 msgstr "Columna invertida"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/layout.cljs
