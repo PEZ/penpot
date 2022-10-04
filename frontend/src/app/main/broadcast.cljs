@@ -18,6 +18,7 @@
 (def ^:const default-topic "penpot")
 
 ;; The main broadcast channel instance, used for emit data
+;; If used as a library may be we can't access js/BroadcastChannel.
 (defonce default-channel
   (when (exists? js/BroadcastChannel)
     (js/BroadcastChannel. default-topic)))

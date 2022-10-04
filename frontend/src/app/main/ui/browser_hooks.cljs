@@ -27,5 +27,4 @@
       (swap! storage assoc key @state))
 
     (use-stream stream (partial reset! state))
-
     state))
