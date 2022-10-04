@@ -31,7 +31,7 @@
   (let [fonts-css-ref (mf/use-ref "")
         redraw (mf/use-state 0)]
 
-    (mf/use-effect-ssr
+    (mf/use-ssr-effect
      (mf/deps fonts)
      (fn []
        (let [sub

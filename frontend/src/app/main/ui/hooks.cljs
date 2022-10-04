@@ -257,15 +257,6 @@
       ;; When exception accessing window we're in ssr
       true)))
 
-(defn use-effect-ssr
-  "Use effect that handles SSR"
-  [deps effect-fn]
-
-  (if (ssr?)
-    (let [ret (effect-fn)]
-      (when (fn? ret) (ret)))
-    (mf/use-effect deps effect-fn)))
-
 (defn with-focus-objects
   ([objects]
    (let [focus (mf/deref refs/workspace-focus-selected)]
