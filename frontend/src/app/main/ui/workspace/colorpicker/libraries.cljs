@@ -10,6 +10,7 @@
    [app.main.data.workspace.colors :as mdc]
    [app.main.refs :as refs]
    [app.main.store :as st]
+   [app.main.ui.browser-hooks :as bh]
    [app.main.ui.components.color-bullet :refer [color-bullet]]
    [app.main.ui.hooks :as h]
    [app.main.ui.icons :as i]
@@ -19,7 +20,7 @@
 
 (mf/defc libraries
   [{:keys [on-select-color on-add-library-color disable-gradient disable-opacity]}]
-  (let [selected         (h/use-shared-state mdc/colorpicker-selected-broadcast-key :recent)
+  (let [selected         (bh/use-shared-state mdc/colorpicker-selected-broadcast-key :recent)
         current-colors   (mf/use-state [])
 
         shared-libs      (mf/deref refs/workspace-libraries)

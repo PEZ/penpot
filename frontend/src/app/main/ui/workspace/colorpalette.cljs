@@ -10,6 +10,7 @@
    [app.main.data.workspace.colors :as mdc]
    [app.main.refs :as refs]
    [app.main.store :as st]
+   [app.main.ui.browser-hooks :as bh]
    [app.main.ui.components.color-bullet :as cb]
    [app.main.ui.components.dropdown :refer [dropdown]]
    [app.main.ui.hooks :as h]
@@ -179,7 +180,7 @@
   (let [recent-colors (mf/deref refs/workspace-recent-colors)
         file-colors   (mf/deref refs/workspace-file-colors)
         shared-libs   (mf/deref refs/workspace-libraries)
-        selected      (h/use-shared-state mdc/colorpalette-selected-broadcast-key :recent)
+        selected      (bh/use-shared-state mdc/colorpalette-selected-broadcast-key :recent)
 
         colors        (mf/use-state [])
         on-select     (mf/use-fn #(reset! selected %))]
