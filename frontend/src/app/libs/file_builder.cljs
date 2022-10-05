@@ -100,6 +100,13 @@
   (closeGroup [_]
     (set! file (fb/close-group file)))
 
+  (add-bool [_ data]
+    (set! file (fb/add-bool file (parse-data data)))
+    (str (:last-id file)))
+
+  (closeBool [_]
+    (set! file (fb/close-bool file)))
+
   (createRect [_ data]
     (set! file (fb/create-rect file (parse-data data)))
     (str (:last-id file)))
