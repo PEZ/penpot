@@ -137,6 +137,46 @@
 
    ])
 
+(mf/defc align-content-row
+  [{:keys [is-col? align-content set-align-content] :as props}]
+         ;;TODO iterar y eliminar código repetido
+  [:div.align-content-style
+   [:button.align-start.tooltip.tooltip-bottom
+    {:class    (dom/classnames :active  (= align-content :align-content-start))
+     :alt      (tr (dm/str "workspace.options.layout.align-content-start")) ;; TODO añadir lineas de textoa tradus
+     :on-click #(set-align-content :align-content-start)}
+    (if is-col?
+      i/align-content-column-start
+      i/align-content-row-start)]
+   [:button.align-center.tooltip.tooltip-bottom
+    {:class    (dom/classnames :active  (= align-content :align-content-center))
+     :alt      (tr (dm/str "workspace.options.layout.align-content-center"))
+     :on-click #(set-align-content :align-content-center)}
+    (if is-col?
+      i/align-content-column-center
+      i/align-content-row-center)]
+   [:button.align-end.tooltip.tooltip-bottom
+    {:class    (dom/classnames :active  (= align-content :align-content-end))
+     :alt      (tr (dm/str "workspace.options.layout.align-content-end"))
+     :on-click #(set-align-content :align-content-end)}
+    (if is-col?
+      i/align-content-column-end
+      i/align-content-row-end)]
+   [:button.align-around.tooltip.tooltip-bottom
+    {:class    (dom/classnames :active  (= align-content :align-content-around))
+     :alt      (tr (dm/str "workspace.options.layout.align-content-around"))
+     :on-click #(set-align-content :align-content-around)}
+    (if is-col?
+      i/align-content-column-around
+      i/align-content-row-around)]
+   [:button.align-between.tooltip.tooltip-bottom
+    {:class    (dom/classnames :active  (= align-content :align-content-between))
+     :alt      (tr (dm/str "workspace.options.layout.align-content-between"))
+     :on-click #(set-align-content :align-content-between)}
+    (if is-col?
+      i/align-content-column-between
+      i/align-content-row-between)]])
+
 (mf/defc justify-content-row
   [{:keys [is-col? justify-content set-justify] :as props}]
          ;;TODO iterar y eliminar código repetido
@@ -253,7 +293,7 @@
 
   (let [padding-type (:layout-padding-type values)]
 
-    [:div.row-flex
+    [:div.padding-row
      [:div.padding-options
       [:div.padding-icon.tooltip.tooltip-bottom
        {:class (dom/classnames :selected (= padding-type :simple))
@@ -265,7 +305,7 @@
         :alt (tr "workspace.options.layout.padding")
         :on-click #(on-change-style :multiple)}
        i/auto-padding-side]]
-
+     [:div.wrapper
      (cond
        (= padding-type :simple)
        [:div.tooltip.tooltip-bottom
@@ -292,24 +332,35 @@
             {:placeholder "--"
              :on-click #(dom/select-target %)
              :on-change (partial on-change num)
-             :value (num (:layout-padding values))}]]]))]))
+             :value (num (:layout-padding values))}]]])) 
+      ]
+     ]))
 
 (mf/defc layout-container-menu
   {::mf/wrap [#(mf/memo' % (mf/check-props ["ids" "values" "type"]))]}
   [{:keys [ids _type values] :as props}]
-  (let [open?             (mf/use-state false)
-        layout-type       (mf/use-state :flex)
-        gap-selected?     (mf/use-state false)
-        wrap-style        (mf/use-state :no-wrap)
-        toggle-open       (fn [] (swap! open? not))
-        set-flex          (fn [] (reset! layout-type :flex))
-        set-grid          (fn [] (reset! layout-type :grid))
-        set-wrap          (fn [] (reset! wrap-style :wrap))
-        set-no-wrap       (fn [] (reset! wrap-style :no-wrap))
-        align-items       (mf/use-state :align-items-start)
-        set-align-items   (fn [value] (reset! align-items value))
-        justify-content   (mf/use-state :justify-content-start)
-        set-justify-content   (fn [value] (reset! justify-content value))
+  (let [open?               (mf/use-state false)
+        layout-type         (mf/use-state :flex)
+        gap-selected?       (mf/use-state false)
+        wrap-style          (mf/use-state :no-wrap)
+        toggle-open         (fn [] (swap! open? not))
+        set-flex            (fn [] (reset! layout-type :flex))
+        set-grid            (fn [] (reset! layout-type :grid))
+        set-wrap            (fn [] (reset! wrap-style :wrap))
+        set-no-wrap         (fn [] (reset! wrap-style :no-wrap))
+        align-items         (mf/use-state :align-items-start)
+        set-align-items     (fn [value] (reset! align-items value))
+        justify-content     (mf/use-state :justify-content-start)
+        set-justify-content (fn [value] (reset! justify-content value))
+        gap-locked?         (mf/use-state true)
+        toggle-gap-type     (fn [] (reset! gap-locked? not))
+        gap-values          (mf/use-state {:row-gap 0 :column-gap 0})
+        set-gap-value       (fn [gap-locked? gap-orientation value] 
+                              (if gap-locked?
+                                (reset! gap-values {:row-gap value :column-gap value})
+                                (swap! gap-values assoc gap-orientation value)
+                                )
+                              (reset! justify-content value))
         on-add-layout
         (fn [_]
           (st/emit! (dwsl/create-layout ids)))
@@ -419,22 +470,29 @@
              [:& wrap-row {:wrap-style @wrap-style
                            :set-wrap set-wrap
                            :set-no-wrap set-no-wrap}]]]]
+
+          (when (= :wrap @wrap-style)
+           [:div.layout-row
+           [:div.align-content.row-title "Content"] ;; TODO tradus
+           [:div.btn-wrapper
+            [:& align-content-row {:is-col? (or (= :column (:layout-dir values)) (= :column-reverse (:layout-dir values)))
+                                   :align-items @align-items
+                                   :set-align set-align-items}]]])
           
           [:div.layout-row
            [:div.align-items.row-title "Align"] ;; TODO tradus
            [:div.btn-wrapper
             [:& align-row {:is-col? (or (= :column (:layout-dir values)) (= :column-reverse (:layout-dir values)))
                            :align-items @align-items
-                           :set-align set-align-items}]]
-           ]
-          
+                           :set-align set-align-items}]]]
+
           [:div.layout-row
            [:div.justify-content.row-title "Justify"] ;; TODO tradus
            [:div.btn-wrapper
             [:& justify-content-row {:is-col? (or (= :column (:layout-dir values)) (= :column-reverse (:layout-dir values)))
-                           :justify-content @justify-content
-                           :set-justify set-justify-content}]]]
-          
+                                     :justify-content @justify-content
+                                     :set-justify set-justify-content}]]]
+
           [:div.gap-group
            [:div.gap-row.tooltip.tooltip-bottom-left
             {:alt (tr "workspace.options.layout.gap-row")} ;;TODO Add tradu
@@ -447,6 +505,7 @@
                                :on-change set-gap
                                :on-blur #(reset! gap-selected? false)
                                :value (:layout-gap values)}]]
+
            [:div.gap-column.tooltip.tooltip-bottom-left
             {:alt (tr "workspace.options.layout.gap-column")}  ;;TODO Add tradu
             [:span.icon.rotated
@@ -459,49 +518,8 @@
                                :on-change set-gap
                                :on-blur #(reset! gap-selected? false)
                                :value (:layout-gap values)}]]
-           [:button i/lock]
-           ]
-        ;; DIRECTION-GAP
-          [:div.direction-gap
-
-           [:div.gap.tooltip.tooltip-bottom-left
-            {:alt (tr "workspace.options.layout.gap")}
-            [:span.icon
-             {:class (dom/classnames
-                      :rotated (or (= (:layout-dir values) :top)
-                                   (= (:layout-dir values) :bottom))
-                      :activated (= @gap-selected? true))}
-             i/auto-gap]
-            [:> numeric-input {:no-validate true
-                               :placeholder "--"
-                               :on-click select-all-gap
-                               :on-change set-gap
-                               :on-blur #(reset! gap-selected? false)
-                               :value (:layout-gap values)}]]]
-
-        ;; LAYOUT FLEX
-          [:div.layout-container
-           [:div.layout-entry.tooltip.tooltip-bottom
-            {:on-click toggle-open
-             :alt (layout-info)}
-            [:div.element-set-actions-button i/actions]
-            [:div.layout-info (layout-info)]]
-
-           (when @open?
-             [:div.layout-body
-              [:& orientation-grid {:on-change-orientation handle-change-orientation :values values}]
-
-              [:div.selects-wrapper
-               [:select.input-select {:value (d/name (:layout-type values))
-                                      :on-change handle-change-type}
-                [:option {:value "packed" :label (tr "workspace.options.layout.packed")}]
-                [:option {:value "space-between" :label (tr "workspace.options.layout.space-between")}]
-                [:option {:value "space-around" :label (tr "workspace.options.layout.space-around")}]]
-
-               [:select.input-select {:value (d/name (:layout-wrap-style values))
-                                      :on-change handle-wrap-style}
-                [:option {:value "wrap" :label (tr "workspace.options.layout.wrap")}]
-                [:option {:value "no-wrap" :label (tr "workspace.options.layout.no-wrap")}]]]])]
+           [:button {:on-click toggle-gap-type
+                     :class (dom/classnames :active gap-locked?)} i/lock]]
 
           [:& padding-section {:values values
                                :on-change-style change-padding-style
