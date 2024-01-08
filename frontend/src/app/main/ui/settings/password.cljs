@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.settings.password
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.spec :as us]
    [app.main.data.messages :as dm]
@@ -76,32 +77,35 @@
                                        (fm/validate-not-empty :password-2 (tr "auth.password-not-empty"))
                                        password-equality]
                           :initial initial)]
-    [:& fm/form {:class "password-form"
+    [:& fm/form {:class (stl/css :password-form)
                  :on-submit on-submit
                  :form form}
-     [:h2 (t locale "dashboard.password-change")]
-     [:div.fields-row
+
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input
        {:type "password"
         :name :password-old
         :auto-focus? true
         :label (t locale "labels.old-password")}]]
 
-     [:div.fields-row
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input
        {:type "password"
         :name :password-1
+        :show-success? true
         :label (t locale "labels.new-password")}]]
 
-     [:div.fields-row
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input
        {:type "password"
         :name :password-2
+        :show-success? true
         :label (t locale "labels.confirm-password")}]]
 
      [:> fm/submit-button*
       {:label (t locale "dashboard.update-settings")
-       :data-test "submit-password"}]]))
+       :data-test "submit-password"
+       :class (stl/css :update-btn)}]]))
 
 ;; --- Password Page
 
@@ -110,6 +114,7 @@
   (mf/use-effect
    #(dom/set-html-title (tr "title.settings.password")))
 
-  [:section.dashboard-settings.form-container
-   [:div.form-container
+  [:section {:class (stl/css :dashboard-settings)}
+   [:div {:class (stl/css :form-container)}
+    [:h2 (t locale "dashboard.password-change")]
     [:& password-form {:locale locale}]]])

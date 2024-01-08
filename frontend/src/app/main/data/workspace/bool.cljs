@@ -7,9 +7,9 @@
 (ns app.main.data.workspace.bool
   (:require
    [app.common.data :as d]
+   [app.common.files.changes-builder :as pcb]
+   [app.common.files.helpers :as cph]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.changes-builder :as pcb]
-   [app.common.pages.helpers :as cph]
    [app.common.svg.path.shapes-to-path :as stp]
    [app.common.types.container :as ctn]
    [app.common.types.shape :as cts]
@@ -18,9 +18,9 @@
    [app.main.data.workspace.changes :as dch]
    [app.main.data.workspace.selection :as dws]
    [app.main.data.workspace.state-helpers :as wsh]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [cuerdas.core :as str]
-   [potok.core :as ptk]))
+   [potok.v2.core :as ptk]))
 
 (defn selected-shapes-idx
   [state]

@@ -9,10 +9,10 @@
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.exceptions :as ex]
+   [app.common.files.changes :as ch]
    [app.common.geom.point :as gpt]
    [app.common.geom.rect :as grc]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.changes :as ch]
    [app.common.pprint :as pp]
    [app.common.schema :as sm]
    [app.common.types.components-list :as ctkl]
@@ -46,11 +46,11 @@
                         (and add-container? (nil? component-id))
                         (assoc :page-id  (:current-page-id file)
                                :frame-id (:current-frame-id file)))
-         valid? (ch/valid-change? change)]
+         valid? (ch/check-change! change)]
 
      (when-not valid?
        (let [explain (sm/explain ::ch/change change)]
-         (pp/pprint (sm/humanize-data explain))
+         (pp/pprint (sm/humanize-explain explain))
          (when fail-on-spec?
            (ex/raise :type :assertion
                      :code :data-validation

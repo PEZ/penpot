@@ -6,24 +6,24 @@
 
 (ns app.main.data.preview
   (:require
-   ["js-beautify" :as beautify]
    [app.common.data :as d]
    [app.common.data.macros :as dm]
-   [app.common.pages.helpers :as cph]
+   [app.common.files.helpers :as cfh]
    [app.common.types.shape-tree :as ctst]
    [app.main.data.workspace.state-helpers :as wsh]
    [app.main.fonts :as fonts]
    [app.main.refs :as refs]
+   [app.util.code-beautify :as cb]
    [app.util.code-gen :as cg]
    [app.util.timers :as ts]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [clojure.set :as set]
    [cuerdas.core :as str]
-   [potok.core :as ptk]))
+   [potok.v2.core :as ptk]))
 
 (def style-type "css")
 (def markup-type "html")
-            
+
 
 (def page-template
   "<!DOCTYPE html>
@@ -38,15 +38,6 @@
   </body>
 </html>")
 
-(defn format-code [code type]
-  (cond-> code
-    (= type "svg")
-    (-> (str/replace "<defs></defs>" "")
-        (str/replace "><" ">\n<"))
-
-    (or (= type "svg") (= type "html"))
-    (beautify/html #js {"indent_size" 2})))
-
 (defn update-preview-window
   [preview code width height]
   (when preview
@@ -57,7 +48,7 @@
 (defn shapes->fonts
   [shapes]
   (->> shapes
-       (filter cph/text-shape?)
+       (filter cfh/text-shape?)
        (map (comp fonts/get-content-fonts :content))
        (reduce set/union #{})))
 
@@ -70,7 +61,7 @@
             shape (get objects shape-id)
 
             all-children
-            (->> (cph/selected-with-children objects [shape-id])
+            (->> (cfh/selected-with-children objects [shape-id])
                  (ctst/sort-z-index objects)
                  (keep (d/getf objects)))
 
@@ -80,17 +71,17 @@
              (rx/merge-map fonts/fetch-font-css)
              (rx/reduce conj [])
              (rx/map #(str/join "\n" %))
-             (rx/subs
+             (rx/subs!
               (fn [fontfaces-css]
                 (let [style-code
                       (dm/str
                        fontfaces-css "\n"
                        (-> (cg/generate-style-code objects style-type all-children)
-                           (format-code style-type)))
+                           (cb/format-code style-type)))
 
                       markup-code
                       (-> (cg/generate-markup-code objects markup-type [shape])
-                          (format-code markup-type))]
+                          (cb/format-code markup-type))]
 
                   (update-preview-window
                    preview

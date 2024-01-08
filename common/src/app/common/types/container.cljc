@@ -10,7 +10,6 @@
    [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.helpers :as cph]
    [app.common.schema :as sm]
    [app.common.types.component :as ctk]
    [app.common.types.components-list :as ctkl]
@@ -26,7 +25,7 @@
 (def valid-container-types
   #{:page :component})
 
-(sm/def! ::container
+(sm/define! ::container
   [:map
    [:id ::sm/uuid]
    [:type {:optional true}
@@ -37,8 +36,8 @@
    [:objects {:optional true}
     [:map-of {:gen/max 10} ::sm/uuid :map]]])
 
-(def container?
-  (sm/pred-fn ::container))
+(def check-container!
+  (sm/check-fn ::container))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; HELPERS
@@ -72,7 +71,7 @@
 
   (dm/assert!
    "expected valid container"
-   (container? container))
+   (check-container! container))
 
   (dm/assert!
    "expected valid uuid for `shape-id`"
@@ -114,7 +113,7 @@
      (nil? shape)
      nil
 
-     (cph/root? shape)
+     (cfh/root? shape)
      nil
 
      (ctk/instance-root? shape)
@@ -134,7 +133,7 @@
      (nil? shape)
      nil
 
-     (cph/root? shape)
+     (cfh/root? shape)
      nil
 
      (ctk/instance-head? shape)
@@ -153,7 +152,7 @@
     (nil? shape)
     nil
 
-    (cph/root? shape)
+    (cfh/root? shape)
     nil
 
     (ctk/instance-root? shape)
@@ -166,14 +165,14 @@
   "Get the top shape of the copy."
   [objects shape]
   (when (:shape-ref shape)
-    (let [parent (cph/get-parent objects (:id shape))]
+    (let [parent (cfh/get-parent objects (:id shape))]
       (or (get-copy-root objects parent) shape))))
 
 (defn inside-component-main?
   "Check if the shape is a component main instance or is inside one."
   [objects shape]
   (cond
-    (or (nil? shape) (cph/root? shape))
+    (or (nil? shape) (cfh/root? shape))
     false
     (nil? (:parent-id shape))  ; This occurs in the root of components v1
     true
@@ -197,19 +196,21 @@
    Also remove component-root of all children. Return the same structure
    as make-component-shape."
   [root objects file-id]
-  (let [new-id       (uuid/next)
-        new-root     (assoc root
-                            :component-id new-id
-                            :component-file file-id
-                            :component-root true
-                            :main-instance true)
-        new-children (->> (cph/get-children objects (:id root))
-                          (map #(dissoc % :component-root)))]
+  (let [new-id            (uuid/next)
+        inside-component? (some? (get-instance-root objects root))
+        new-root          (cond-> (assoc root
+                                         :component-id new-id
+                                         :component-file file-id
+                                         :main-instance true)
+                            (not inside-component?)
+                            (assoc :component-root true))
+        new-children       (->> (cfh/get-children objects (:id root))
+                                (map #(dissoc % :component-root)))]
     [(assoc new-root :id new-id)
      nil
      (into [new-root] new-children)]))
 
-(defn make-component-shape
+(defn make-component-shape ;; Only used for components v1
   "Clone the shape and all children. Generate new ids and detach
   from parent and frame. Update the original shapes to have links
   to the new ones."
@@ -254,7 +255,11 @@
                                   (dissoc :component-root)))
 
         [new-root-shape new-shapes updated-shapes]
-        (ctst/clone-object shape nil objects update-new-shape update-original-shape)
+        (ctst/clone-shape shape
+                          nil
+                          objects
+                          :update-new-shape update-new-shape
+                          :update-original-shape update-original-shape)
 
         ;; If frame-id points to a shape inside the component, remap it to the
         ;; corresponding new frame shape. If not, set it to nil.
@@ -281,7 +286,7 @@
 
          component-shape (if components-v2
                            (-> (get-shape component-page (:main-instance-id component))
-                               (assoc :parent-id nil)
+                               (assoc :parent-id nil) ;; On v2 we force parent-id to nil in order to behave like v1
                                (assoc :frame-id uuid/zero))
                            (get-shape component (:id component)))
 
@@ -334,25 +339,23 @@
                       :component-root true
                       :name new-name)
 
-               (some? (:parent-id original-shape))
+               (some? (:parent-id original-shape)) ;; On v2 we have removed the parent-id for component roots (see above)
                (dissoc :component-root))))
 
          [new-shape new-shapes _]
-         (ctst/clone-object component-shape
-                            uuid/zero
-                            (if components-v2 (:objects component-page) (:objects component))
-                            update-new-shape
-                            (fn [object _] object)
-                            force-id
-                            keep-ids?)
+         (ctst/clone-shape component-shape
+                           frame-id
+                           (if components-v2 (:objects component-page) (:objects component))
+                           :update-new-shape update-new-shape
+                           :force-id force-id
+                           :keep-ids? keep-ids?
+                           :frame-id frame-id
+                           :dest-objects (:objects container))
 
-         ;; If frame-id points to a shape inside the component, remap it to the
-         ;; corresponding new frame shape. If not, set it to the destination frame.
-         ;; Also fix empty parent-id.
+         ;; Fix empty parent-id and remap all grid cells to the new ids.
          remap-ids
          (fn [shape]
            (as-> shape $
-             (update $ :frame-id #(get @ids-map % frame-id))
              (update $ :parent-id #(or % (:frame-id $)))
              (cond-> $
                (ctl/grid-layout? shape)

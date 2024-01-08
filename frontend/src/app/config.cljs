@@ -11,6 +11,7 @@
    [app.common.uri :as u]
    [app.common.version :as v]
    [app.util.avatars :as avatars]
+   [app.util.extends]
    [app.util.globals :refer [global location]]
    [app.util.navigator :as nav]
    [app.util.object :as obj]
@@ -59,7 +60,10 @@
     :webworker))
 
 (def default-flags
-  [:enable-newsletter-subscription
+  [:enable-onboarding
+   :enable-onboarding-team
+   :enable-onboarding-questions
+   :enable-onboarding-newsletter
    :enable-dashboard-templates-section
    :enable-google-fonts-provider])
 
@@ -97,8 +101,10 @@
 (def browser              (parse-browser))
 (def platform             (parse-platform))
 
-(def terms-of-service-uri (obj/get global "penpotTermsOfServiceURI" nil))
-(def privacy-policy-uri   (obj/get global "penpotPrivacyPolicyURI" nil))
+(def terms-of-service-uri (obj/get global "penpotTermsOfServiceURI" "https://penpot.app/terms"))
+(def privacy-policy-uri   (obj/get global "penpotPrivacyPolicyURI" "https://penpot.app/privacy"))
+(def flex-help-uri        (obj/get global "penpotGridHelpURI" "https://help.penpot.app/user-guide/flexible-layouts/"))
+(def grid-help-uri        (obj/get global "penpotGridHelpURI" "https://help.penpot.app/user-guide/flexible-layouts/"))
 
 (defn- normalize-uri
   [uri-str]
@@ -131,9 +137,9 @@
   (= candidate platform))
 
 (defn resolve-profile-photo-url
-  [{:keys [photo-id fullname name] :as profile}]
+  [{:keys [photo-id fullname name color] :as profile}]
   (if (nil? photo-id)
-    (avatars/generate {:name (or fullname name)})
+    (avatars/generate {:name (or fullname name) :color color})
     (dm/str (u/join public-uri "assets/by-id/" photo-id))))
 
 (defn resolve-team-photo-url

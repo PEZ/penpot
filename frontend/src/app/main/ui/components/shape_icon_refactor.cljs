@@ -7,10 +7,10 @@
 (ns app.main.ui.components.shape-icon-refactor
   (:require
    [app.common.types.component :as ctk]
+   [app.common.types.shape :as cts]
    [app.common.types.shape.layout :as ctl]
    [app.main.ui.icons :as i]
    [rumext.v2 :as mf]))
-
 
 (mf/defc element-icon-refactor
   {::mf/wrap-props false}
@@ -22,21 +22,22 @@
     (case (:type shape)
       :frame (cond
                (and (ctl/flex-layout? shape) (ctl/col? shape))
-               i/flex-vertical-refactor
-
-               (and (ctl/flex-layout? shape) (ctl/row? shape))
                i/flex-horizontal-refactor
 
-               ;; TODO: GRID ICON
+               (and (ctl/flex-layout? shape) (ctl/row? shape))
+               i/flex-vertical-refactor
+
+               (ctl/grid-layout? shape)
+               i/flex-grid-refactor
 
                :else
                i/board-refactor)
       ;; TODO -> THUMBNAIL ICON
       :image i/img-refactor
-      :line i/path-refactor
-      :circle i/elipse-refactor
-      :path i/path-refactor
-      :rect i/rectangle-refactor
+      :line (if (cts/has-images? shape) i/img-refactor i/path-refactor)
+      :circle (if (cts/has-images? shape) i/img-refactor i/elipse-refactor)
+      :path (if (cts/has-images? shape) i/img-refactor i/path-refactor)
+      :rect (if (cts/has-images? shape) i/img-refactor i/rectangle-refactor)
       :text i/text-refactor
       :group (if (:masked-group shape)
                i/mask-refactor

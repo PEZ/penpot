@@ -5,12 +5,13 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.viewer.interactions
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.helpers :as cph]
    [app.common.types.modifiers :as ctm]
    [app.common.types.page :as ctp]
    [app.common.uuid :as uuid]
@@ -34,7 +35,7 @@
                     (gpt/add delta)
                     (gpt/negate))
         update-fn #(d/update-when %1 %2 gsh/transform-shape (ctm/move-modifiers vector))]
-    (->> (cph/get-children-ids objects frame-id)
+    (->> (cfh/get-children-ids objects frame-id)
          (into [frame-id])
          (reduce update-fn objects))))
 
@@ -54,11 +55,11 @@
 
         ;; we have con consider the children if the fixed element is a group
         fixed-children-ids
-        (into #{} (mapcat #(cph/get-children-ids (:objects page) (:id %)) fixed-ids))
+        (into #{} (mapcat #(cfh/get-children-ids (:objects page) (:id %)) fixed-ids))
 
         parent-children-ids
         (->> fixed-ids
-             (mapcat #(cons (:id %) (cph/get-parent-ids (:objects page) (:id %))))
+             (mapcat #(cons (:id %) (cfh/get-parent-ids (:objects page) (:id %))))
              (remove #(= % uuid/zero)))
 
         fixed-ids
@@ -194,33 +195,44 @@
   (let [flows        (dm/get-in page [:options :flows])
         frames       (:frames page)
         frame        (get frames index)
-        current-flow (mf/use-state
-                       (ctp/get-frame-flow flows (:id frame)))
+        current-flow* (mf/use-state
+                       #(ctp/get-frame-flow flows (:id frame)))
 
-        show-dropdown?  (mf/use-state false)
-        toggle-dropdown (mf/use-fn #(swap! show-dropdown? not))
-        hide-dropdown   (mf/use-fn #(reset! show-dropdown? false))
+        current-flow  (deref current-flow*)
+
+        show-dropdown?*  (mf/use-state false)
+        show-dropdown?   (deref show-dropdown?*)
+        toggle-dropdown  (mf/use-fn #(swap! show-dropdown?* not))
+        hide-dropdown    (mf/use-fn #(reset! show-dropdown?* false))
 
         select-flow
         (mf/use-callback
-         (fn [flow]
-           (reset! current-flow flow)
-           (st/emit! (dv/go-to-frame (:starting-frame flow)))))]
+         (fn [event]
+           (let [flow (-> (dom/get-current-target event)
+                          (dom/get-data "value")
+                          (d/read-string))]
+             (reset! current-flow* flow)
+             (st/emit! (dv/go-to-frame (:starting-frame flow))))))]
 
     (when (seq flows)
-      [:div.view-options {:on-click toggle-dropdown}
-       [:span.icon i/play]
-       [:span.label (:name @current-flow)]
-       [:span.icon i/arrow-down]
-       [:& dropdown {:show @show-dropdown?
+      [:div {:on-click toggle-dropdown
+             :class (stl/css :view-options)}
+       [:span {:class (stl/css :icon)} i/play-refactor]
+       [:span {:class (stl/css :dropdown-title)} (:name current-flow)]
+       [:span {:class (stl/css :icon-dropdown)}  i/arrow-refactor]
+       [:& dropdown {:show show-dropdown?
                      :on-close hide-dropdown}
-        [:ul.dropdown.with-check
+        [:ul {:class (stl/css :dropdown)}
          (for [[index flow] (d/enumerate flows)]
            [:li {:key (dm/str "flow-" (:id flow) "-" index)
-                 :class (dom/classnames :selected (= (:id flow) (:id @current-flow)))
-                 :on-click #(select-flow flow)}
-            [:span.icon i/tick]
-            [:span.label (:name flow)]])]]])))
+                 :class (stl/css-case :dropdown-element true
+                                      :selected (= (:id flow) (:id current-flow)))
+                         ;; This is not a best practise, is not very performant Do not reproduce
+                 :data-value (pr-str flow)
+                 :on-click select-flow}
+            [:span {:class (stl/css :label)} (:name flow)]
+            (when (= (:id flow) (:id current-flow))
+              [:span {:class (stl/css :icon)} i/tick-refactor])])]]])))
 
 (mf/defc interactions-menu
   [{:keys [interactions-mode]}]
@@ -230,37 +242,46 @@
 
         select-mode
         (mf/use-fn
-          (fn [event]
-            (let [mode (some-> (dom/get-current-target event)
-                         (dom/get-data "mode")
-                         (keyword))]
-              (dom/stop-propagation event)
-              (st/emit! (dv/set-interactions-mode mode)))))]
-
-    [:div.view-options {:on-click toggle-dropdown}
-     [:span.label (tr "viewer.header.interactions")]
-     [:span.icon i/arrow-down]
+         (fn [event]
+           (let [mode (some-> (dom/get-current-target event)
+                              (dom/get-data "mode")
+                              (keyword))]
+             (dom/stop-propagation event)
+             (st/emit! (dv/set-interactions-mode mode)))))]
+    [:div {:on-click toggle-dropdown
+           :class (stl/css :view-options)}
+     [:span {:class (stl/css :dropdown-title)} (tr "viewer.header.interactions")]
+     [:span {:class (stl/css :icon-dropdown)} i/arrow-refactor]
      [:& dropdown {:show @show-dropdown?
                    :on-close hide-dropdown}
-      [:ul.dropdown.with-check
-       [:li {:class (dom/classnames :selected (= interactions-mode :hide))
+      [:ul {:class (stl/css :dropdown)}
+       [:li {:class (stl/css-case :dropdown-element true
+                                  :selected (= interactions-mode :hide))
              :on-click select-mode
              :data-mode :hide}
-        [:span.icon i/tick]
-        [:span.label (tr "viewer.header.dont-show-interactions")]]
 
-       [:li {:class (dom/classnames :selected (= interactions-mode :show))
+        [:span {:class (stl/css :label)} (tr "viewer.header.dont-show-interactions")]
+        (when (= interactions-mode :hide)
+          [:span {:class (stl/css :icon)}  i/tick-refactor])]
+
+       [:li {:class (stl/css-case :dropdown-element true
+                                  :selected (= interactions-mode :show))
              :on-click select-mode
              :data-mode :show}
-        [:span.icon i/tick]
-        [:span.label (tr "viewer.header.show-interactions")]]
+        [:span {:class (stl/css :label)} (tr "viewer.header.show-interactions")]
+        (when (= interactions-mode :show)
+          [:span {:class (stl/css :icon)}  i/tick-refactor])]
 
-       [:li {:class (dom/classnames :selected (= interactions-mode :show-on-click))
+
+
+       [:li {:class (stl/css-case :dropdown-element true
+                                  :selected (= interactions-mode :show-on-click))
              :on-click select-mode
              :data-mode :show-on-click}
-        [:span.icon i/tick]
-        [:span.label (tr "viewer.header.show-interactions-on-click")]]]]]))
 
+        [:span {:class (stl/css :label)} (tr "viewer.header.show-interactions-on-click")]
+        (when (= interactions-mode :show-on-click)
+          [:span {:class (stl/css :icon)}  i/tick-refactor])]]]]))
 
 (defn animate-go-to-frame
   [animation current-viewport orig-viewport current-size orig-size wrapper-size]

@@ -9,8 +9,8 @@
    [app.common.colors :as clr]
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.helpers :as cph]
    [app.common.types.shape-tree :as ctt]
    [app.common.types.shape.layout :as ctl]
    [app.main.data.workspace.modifiers :as dwm]
@@ -18,7 +18,6 @@
    [app.main.ui.context :as ctx]
    [app.main.ui.hooks :as ui-hooks]
    [app.main.ui.measurements :as msr]
-   [app.main.ui.shapes.embed :as embed]
    [app.main.ui.shapes.export :as use]
    [app.main.ui.workspace.shapes :as shapes]
    [app.main.ui.workspace.shapes.text.editor :as editor]
@@ -47,7 +46,7 @@
    [app.main.ui.workspace.viewport.viewport-ref :refer [create-viewport-ref]]
    [app.main.ui.workspace.viewport.widgets :as widgets]
    [app.util.debug :as dbg]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [rumext.v2 :as mf]))
 
 ;; --- Viewport
@@ -60,7 +59,7 @@
       objects id
       (fn [shape]
         (cond-> shape
-          (and (cph/text-shape? shape) (contains? text-modifiers id))
+          (and (cfh/text-shape? shape) (contains? text-modifiers id))
           (dwm/apply-text-modifier (get text-modifiers id))
 
           (contains? modifiers id)
@@ -70,7 +69,7 @@
    selected))
 
 (mf/defc viewport
-  [{:keys [selected wglobal wlocal layout file] :as props}]
+  [{:keys [selected wglobal wlocal layout file palete-size] :as props}]
   (let [;; When adding data from workspace-local revisit `app.main.ui.workspace` to check
         ;; that the new parameter is sent
         {:keys [edit-path
@@ -123,6 +122,7 @@
         cursor            (mf/use-state (utils/get-cursor :pointer-inner))
         hover-ids         (mf/use-state nil)
         hover             (mf/use-state nil)
+        measure-hover     (mf/use-state nil)
         hover-disabled?   (mf/use-state false)
         hover-top-frame-id (mf/use-state nil)
         frame-hover       (mf/use-state nil)
@@ -144,7 +144,7 @@
                            (fn []
                              (let [parent-id
                                    (->> @hover-ids
-                                        (d/seek (partial cph/root-frame? base-objects)))]
+                                        (d/seek (partial cfh/root-frame? base-objects)))]
                                (when (some? parent-id)
                                  (get base-objects parent-id)))))
 
@@ -230,7 +230,7 @@
         show-rules?              (and (contains? layout :rules) (not hide-ui?))
 
 
-        disabled-guides?         (or drawing-tool transform)
+        disabled-guides?         (or drawing-tool transform drawing-path? node-editing?)
 
         one-selected-shape?      (= (count selected-shapes) 1)
 
@@ -248,7 +248,7 @@
 
         first-selected-shape (first selected-shapes)
         selecting-first-level-frame? (and one-selected-shape?
-                                          (cph/root-frame? first-selected-shape))
+                                          (cfh/root-frame? first-selected-shape))
 
         offset-x (if selecting-first-level-frame?
                    (:x first-selected-shape)
@@ -265,9 +265,10 @@
     (hooks/setup-viewport-size vport viewport-ref)
     (hooks/setup-cursor cursor alt? mod? space? panning drawing-tool drawing-path? node-editing? z? workspace-read-only?)
     (hooks/setup-keyboard alt? mod? space? z? shift?)
-    (hooks/setup-hover-shapes page-id move-stream base-objects transform selected mod? hover hover-ids hover-top-frame-id @hover-disabled? focus zoom show-measures?)
+    (hooks/setup-hover-shapes page-id move-stream base-objects transform selected mod? hover measure-hover
+                              hover-ids hover-top-frame-id @hover-disabled? focus zoom show-measures?)
     (hooks/setup-viewport-modifiers modifiers base-objects)
-    (hooks/setup-shortcuts node-editing? drawing-path? text-editing?)
+    (hooks/setup-shortcuts node-editing? drawing-path? text-editing? grid-editing?)
     (hooks/setup-active-frames base-objects hover-ids selected active-frames zoom transform vbox)
 
     [:div.viewport {:style #js {"--zoom" zoom}}
@@ -317,6 +318,19 @@
                :pointer-events "none"}
        :fill "none"}
 
+      [:defs
+       [:linearGradient {:id "frame-placeholder-gradient"}
+        [:animateTransform
+         {:attributeName "gradientTransform"
+          :type "translate"
+          :from "-1 0"
+          :to "1 0"
+          :dur "2s"
+          :repeatCount "indefinite"}]
+        [:stop {:offset "0%" :stop-color (str "color-mix(in srgb-linear, " background " 90%, #777)") :stop-opacity 1}]
+        [:stop {:offset "50%" :stop-color (str "color-mix(in srgb-linear, " background " 80%, #777)") :stop-opacity 1}]
+        [:stop {:offset "100%" :stop-color (str "color-mix(in srgb-linear, " background " 90%, #777)") :stop-opacity 1}]]]
+
       (when (dbg/enabled? :show-export-metadata)
         [:& use/export-page {:options options}])
 
@@ -329,11 +343,10 @@
 
       [:& (mf/provider ctx/current-vbox) {:value vbox'}
        [:& (mf/provider use/include-metadata-ctx) {:value (dbg/enabled? :show-export-metadata)}
-        [:& (mf/provider embed/context) {:value true}
          ;; Render root shape
-         [:& shapes/root-shape {:key page-id
-                                :objects base-objects
-                                :active-frames @active-frames}]]]]]
+        [:& shapes/root-shape {:key page-id
+                               :objects base-objects
+                               :active-frames @active-frames}]]]]
 
      [:svg.viewport-controls
       {:xmlns "http://www.w3.org/2000/svg"
@@ -374,7 +387,7 @@
        (when show-frame-outline?
          (let [outlined-frame-id
                (->> @hover-ids
-                    (filter #(cph/frame-shape? (get base-objects %)))
+                    (filter #(cfh/frame-shape? (get base-objects %)))
                     (remove selected)
                     (first))
                outlined-frame (get objects outlined-frame-id)]
@@ -422,7 +435,7 @@
           {:bounds vbox
            :selected-shapes selected-shapes
            :frame selected-frame
-           :hover-shape @hover
+           :hover-shape @measure-hover
            :zoom zoom}])
 
        (when show-padding?
@@ -524,7 +537,8 @@
        [:& scroll-bars/viewport-scrollbars
         {:objects base-objects
          :zoom zoom
-         :vbox vbox}]
+         :vbox vbox
+         :bottom-padding (when palete-size (+ palete-size 8))}]
 
        (when-not hide-ui?
          [:& rules/rules

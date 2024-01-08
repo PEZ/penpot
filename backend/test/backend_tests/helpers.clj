@@ -12,16 +12,16 @@
    [app.common.exceptions :as ex]
    [app.common.features :as cfeat]
    [app.common.flags :as flags]
-   [app.common.pages :as cp]
    [app.common.pprint :as pp]
    [app.common.schema :as sm]
    [app.common.spec :as us]
+   [app.common.transit :as tr]
    [app.common.uuid :as uuid]
    [app.config :as cf]
    [app.db :as db]
    [app.main :as main]
-   [app.media :as-alias mtx]
    [app.media]
+   [app.media :as-alias mtx]
    [app.migrations]
    [app.msgbus :as-alias mbus]
    [app.rpc :as-alias rpc]
@@ -44,8 +44,12 @@
    [integrant.core :as ig]
    [mockery.core :as mk]
    [promesa.core :as p]
+   [promesa.exec :as px]
+   [ring.response :as rres]
    [yetti.request :as yrq])
   (:import
+   java.io.PipedInputStream
+   java.io.PipedOutputStream
    java.util.UUID
    org.postgresql.ds.PGSimpleDataSource))
 
@@ -111,8 +115,7 @@
    "alter table storage_object set unlogged;\n"
    "alter table server_error_report set unlogged;\n"
    "alter table server_prop set unlogged;\n"
-   "alter table global_complaint_report set unlogged;\n"
-])
+   "alter table global_complaint_report set unlogged;\n"])
 
 (defn state-init
   [next]
@@ -120,7 +123,8 @@
                 app.config/config config
                 app.loggers.audit/submit! (constantly nil)
                 app.auth/derive-password identity
-                app.auth/verify-password (fn [a b] {:valid (= a b)})]
+                app.auth/verify-password (fn [a b] {:valid (= a b)})
+                app.common.features/get-enabled-features (fn [& _] app.common.features/supported-features)]
 
     (let [templates [{:id "test"
                       :name "test"
@@ -171,12 +175,11 @@
                  " WHERE table_schema = 'public' "
                  "   AND table_name != 'migrations';")]
     (db/with-atomic [conn *pool*]
+      (db/exec-one! conn ["SET CONSTRAINTS ALL DEFERRED"])
+      (db/exec-one! conn ["SET LOCAL rules.deletion_protection TO off"])
       (let [result (->> (db/exec! conn [sql])
                         (map :table-name)
-                        (remove #(= "task" %)))
-            sql    (str "TRUNCATE "
-                        (apply str (interpose ", " result))
-                        " CASCADE;")]
+                        (remove #(= "task" %)))]
         (doseq [table result]
           (db/exec! conn [(str "delete from " table ";")]))))
 
@@ -253,9 +256,10 @@
                                                  params)))))))
 
 (defn mark-file-deleted*
-  ([params] (mark-file-deleted* *system* params))
+  ([params]
+   (mark-file-deleted* *system* params))
   ([conn {:keys [id] :as params}]
-   (#'files/mark-file-deleted! conn {:id id})))
+   (#'files/mark-file-deleted! conn id)))
 
 (defn create-team*
   ([i params] (create-team* *system* i params))
@@ -272,7 +276,7 @@
 (defn create-file-media-object*
   ([params] (create-file-media-object* *system* params))
   ([system {:keys [name width height mtype file-id is-local media-id]
-          :or {name "sample" width 100 height 100 mtype "image/svg+xml" is-local true}}]
+            :or {name "sample" width 100 height 100 mtype "image/svg+xml" is-local true}}]
 
    (dm/with-open [conn (db/open system)]
      (db/insert! conn :file-media-object
@@ -322,8 +326,8 @@
   ([system {:keys [project-id profile-id role] :or {role :owner}}]
    (dm/with-open [conn (db/open system)]
      (#'teams/create-project-role conn {:project-id project-id
-                                           :profile-id profile-id
-                                           :role role}))))
+                                        :profile-id profile-id
+                                        :role role}))))
 
 (defn create-file-role*
   ([params] (create-file-role* *system* params))
@@ -336,7 +340,7 @@
 (defn update-file*
   ([params] (update-file* *system* params))
   ([system {:keys [file-id changes session-id profile-id revn]
-          :or {session-id (uuid/next) revn 0}}]
+            :or {session-id (uuid/next) revn 0}}]
    (db/tx-run! system (fn [{:keys [::db/conn] :as system}]
                         (let [file (files.update/get-file conn file-id)]
                           (files.update/update-file system
@@ -428,12 +432,12 @@
        (us/pretty-explain data))
 
       (= :params-validation (:code data))
-      (app.common.pprint/pprint
-       (sm/humanize-data (::sm/explain data)))
+      (println
+       (sm/humanize-explain (::sm/explain data)))
 
       (= :data-validation (:code data))
-      (app.common.pprint/pprint
-       (sm/humanize-data (::sm/explain data)))
+      (println
+       (sm/humanize-explain (::sm/explain data)))
 
       (= :service-error (:type data))
       (print-error! (.getCause ^Throwable error))
@@ -507,6 +511,10 @@
   [sql]
   (db/exec! *pool* sql))
 
+(defn db-exec-one!
+  [sql]
+  (db/exec-one! *pool* sql))
+
 (defn db-delete!
   [& params]
   (apply db/delete! *pool* params))
@@ -553,3 +561,28 @@
                  (assoc :return-list [])
                  (assoc :call-args nil)
                  (assoc :call-args-list [])))))
+
+(defn- slurp'
+  [input & opts]
+  (let [sw (java.io.StringWriter.)]
+    (with-open [^java.io.Reader r (java.io.InputStreamReader. input "UTF-8")]
+      (io/copy r sw)
+      (.toString sw))))
+
+(defn consume-sse
+  [callback]
+  (let [{:keys [::rres/status ::rres/body ::rres/headers] :as response} (callback {})
+        output (PipedOutputStream.)
+        input  (PipedInputStream. output)]
+
+    (try
+      (px/exec! :virtual #(rres/-write-body-to-stream body nil output))
+      (into []
+            (map (fn [event]
+                   (let [[item1 item2] (re-seq #"(.*): (.*)\n?" event)]
+                     [(keyword (nth item1 2))
+                      (tr/decode-str (nth item2 2))])))
+            (-> (slurp' input)
+                (str/split "\n\n")))
+      (finally
+        (.close input)))))

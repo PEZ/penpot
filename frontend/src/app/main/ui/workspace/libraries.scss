@@ -39,9 +39,11 @@
         stroke: var(--icon-foreground);
       }
     }
+
     .modal-title {
       @include tabTitleTipography;
       margin-bottom: $s-16;
+      color: var(--modal-title-foreground-color);
     }
 
     .modal-content {
@@ -62,7 +64,7 @@
           flex-direction: column;
           height: calc(100% - $s-12);
           .title-spacing-lib {
-            margin: 0 0 $s-24 calc(-1 * $s-8);
+            margin: 0 0 0 calc(-1 * $s-8);
           }
           .section-list,
           .section-list-shared {
@@ -70,6 +72,7 @@
             max-height: $s-320;
             margin-top: $s-12;
             overflow: auto;
+            padding-right: $s-8;
             .section-list-item {
               display: grid;
               grid-template-columns: 1fr auto;
@@ -118,15 +121,15 @@
                 height: $s-32;
                 border-radius: $br-8;
                 margin-right: $s-2;
+                padding: $s-8;
+                width: $s-32;
+                margin-left: $s-8;
                 svg {
                   @extend .button-icon;
                   stroke: var(--icon-foreground);
                 }
               }
-              .item-button-shared {
-                padding: $s-8;
-                width: $s-32;
-              }
+
               .item-button-icon {
                 width: $s-28;
                 height: $s-28;
@@ -160,6 +163,7 @@
           .section-list-empty {
             @include titleTipography;
             @include flexCenter;
+            color: var(--empty-message-foreground-color);
 
             svg {
               @extend .button-icon-small;
@@ -174,7 +178,7 @@
           grid-column: span 3;
           grid-template-columns: repeat(auto-fill, minmax($s-160, 1fr));
           grid-gap: $s-24;
-          font-size: $fs12;
+          font-size: $fs-12;
           margin-top: $s-16;
 
           .libraries-updates-item {

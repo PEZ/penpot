@@ -6,14 +6,14 @@
 
 (ns app.main.data.workspace.path.shapes-to-path
   (:require
-   [app.common.pages.changes-builder :as pcb]
-   [app.common.pages.helpers :as cph]
+   [app.common.files.changes-builder :as pcb]
+   [app.common.files.helpers :as cph]
    [app.common.svg.path.shapes-to-path :as upsp]
    [app.common.types.container :as ctn]
    [app.main.data.workspace.changes :as dch]
    [app.main.data.workspace.state-helpers :as wsh]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 (defn convert-selected-to-path []
   (ptk/reify ::convert-selected-to-path

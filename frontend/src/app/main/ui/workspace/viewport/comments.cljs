@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.workspace.viewport.comments
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.main.data.comments :as dcm]
    [app.main.data.workspace.comments :as dwcm]
@@ -54,12 +55,13 @@
        (st/emit! (dwcm/initialize-comments file-id))
        (fn []
          (st/emit! ::dwcm/finalize))))
-
-    [:div.comments-section
-     [:div.workspace-comments-container
-      {:style {:width (str (:width vport) "px")
+    [:div {:class (stl/css :comments-section)}
+     [:div
+      {:class (stl/css :workspace-comments-container)
+       :style {:width (str (:width vport) "px")
                :height (str (:height vport) "px")}}
-      [:div.threads {:style {:transform (str/format "translate(%spx, %spx)" pos-x pos-y)}}
+      [:div {:class (stl/css :threads)
+             :style {:transform (str/format "translate(%spx, %spx)" pos-x pos-y)}}
        (for [item threads]
          [:& cmt/thread-bubble {:thread item
                                 :zoom zoom

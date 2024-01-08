@@ -8,16 +8,16 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.align :as gal]
    [app.common.geom.point :as gpt]
    [app.common.geom.rect :as gpr]
    [app.common.geom.shapes :as gsh]
    [app.common.math :as mth]
-   [app.common.pages.helpers :as cph]
    [app.main.data.workspace.state-helpers :as wsh]
-   [app.main.streams :as ms]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [app.util.mouse :as mse]
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 (defn initialize-viewport
   [{:keys [width height] :as size}]
@@ -40,7 +40,7 @@
           (initialize [state local]
             (let [page-id (:current-page-id state)
                   objects (wsh/lookup-page-objects state page-id)
-                  shapes  (cph/get-immediate-children objects)
+                  shapes  (cfh/get-immediate-children objects)
                   srect   (gsh/shapes->rect shapes)
                   local   (assoc local :vport size :zoom 1 :zoom-inverse 1 :hide-toolbar false)]
 
@@ -155,7 +155,7 @@
           (rx/concat
            (rx/of #(-> % (assoc-in [:workspace-local :panning] true)))
            (->> stream
-                (rx/filter ms/pointer-event?)
+                (rx/filter mse/pointer-event?)
                 (rx/filter #(= :delta (:source %)))
                 (rx/map :pt)
                 (rx/take-until stopper)

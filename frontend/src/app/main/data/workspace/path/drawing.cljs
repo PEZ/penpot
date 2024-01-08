@@ -20,15 +20,15 @@
    [app.main.data.workspace.drawing.common :as dwdc]
    [app.main.data.workspace.edition :as dwe]
    [app.main.data.workspace.path.changes :as changes]
-   [app.main.data.workspace.path.common :as common :refer [content?]]
+   [app.main.data.workspace.path.common :as common :refer [check-path-content!]]
    [app.main.data.workspace.path.helpers :as helpers]
    [app.main.data.workspace.path.state :as st]
    [app.main.data.workspace.path.streams :as streams]
    [app.main.data.workspace.path.undo :as undo]
    [app.main.data.workspace.state-helpers :as wsh]
-   [app.main.streams :as ms]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [app.util.mouse :as mse]
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 (declare change-edit-mode)
 
@@ -46,7 +46,8 @@
             command (helpers/next-node shape position last-point prev-handler)]
         (assoc-in state [:workspace-local :edit-path id :preview] command)))))
 
-(defn add-node [{:keys [x y shift?]}]
+(defn add-node
+  [{:keys [x y shift?]}]
   (ptk/reify ::add-node
     ptk/UpdateEvent
     (update [_ state]
@@ -122,16 +123,12 @@
 
 (declare close-path-drag-end)
 
-(defn close-path-drag-start [position]
+(defn close-path-drag-start
+  [position]
   (ptk/reify ::close-path-drag-start
     ptk/WatchEvent
     (watch [_ state stream]
-      (let [stop-stream
-            (->> stream (rx/filter #(or (helpers/end-path-event? %)
-                                        (ms/mouse-up? %))))
-
-            content (st/get-path state :content)
-
+      (let [content  (st/get-path state :content)
             handlers (-> (upc/content->handlers content)
                          (get position))
 
@@ -139,9 +136,15 @@
                            (first handlers))
 
             drag-events-stream
-            (->> (streams/position-stream)
-                 (rx/take-until stop-stream)
-                 (rx/map #(drag-handler position idx prefix %)))]
+            (->> (streams/position-stream state)
+                 (rx/map #(drag-handler position idx prefix %))
+                 (rx/take-until
+                  (rx/merge
+                   (->> stream
+                        (rx/filter mse/mouse-event?)
+                        (rx/filter mse/mouse-up-event?))
+                   (->> stream
+                        (rx/filter helpers/end-path-event?)))))]
 
         (rx/concat
          (rx/of (add-node position))
@@ -162,13 +165,17 @@
 (defn start-path-from-point [position]
   (ptk/reify ::start-path-from-point
     ptk/WatchEvent
-    (watch [_ _ stream]
-      (let [mouse-up    (->> stream (rx/filter #(or (helpers/end-path-event? %)
-                                                    (ms/mouse-up? %))))
-            drag-events (->> (streams/position-stream)
-                             (rx/take-until mouse-up)
-                             (rx/map #(drag-handler %)))]
+    (watch [_ state stream]
+      (let [stoper (rx/merge
+                    (->> stream
+                         (rx/filter mse/mouse-event?)
+                         (rx/filter mse/mouse-up-event?))
+                    (->> stream
+                         (rx/filter helpers/end-path-event?)))
 
+            drag-events (->> (streams/position-stream state)
+                             (rx/map #(drag-handler %))
+                             (rx/take-until stoper))]
         (rx/concat
          (rx/of (add-node position))
          (streams/drag-stream
@@ -184,14 +191,22 @@
        (rx/merge-map #(rx/empty))))
 
 (defn make-drag-stream
-  [stream down-event]
-  (let [mouse-up    (->> stream (rx/filter #(or (helpers/end-path-event? %)
-                                                (ms/mouse-up? %))))
+  [state stream down-event]
 
-        drag-events (->> (streams/position-stream)
-                         (rx/take-until mouse-up)
-                         (rx/map #(drag-handler %)))]
+  (dm/assert!
+   "should be a pointer"
+   (gpt/point? down-event))
 
+  (let [stoper (rx/merge
+                (->> stream
+                     (rx/filter mse/mouse-event?)
+                     (rx/filter mse/mouse-up-event?))
+                (->> stream
+                     (rx/filter helpers/end-path-event?)))
+
+        drag-events (->> (streams/position-stream state)
+                         (rx/map #(drag-handler %))
+                         (rx/take-until stoper))]
     (rx/concat
      (rx/of (add-node down-event))
      (streams/drag-stream
@@ -208,13 +223,16 @@
         (assoc-in state [:workspace-local :edit-path id :edit-mode] :draw)))
 
     ptk/WatchEvent
-    (watch [_ _ stream]
-      (let [mouse-down      (->> stream (rx/filter ms/mouse-down?))
-            end-path-events (->> stream (rx/filter helpers/end-path-event?))
+    (watch [_ state stream]
+      (let [mouse-down      (->> stream
+                                 (rx/filter mse/mouse-event?)
+                                 (rx/filter mse/mouse-down-event?))
+            end-path-events (->> stream
+                                 (rx/filter helpers/end-path-event?))
 
             ;; Mouse move preview
             mousemove-events
-            (->> (streams/position-stream)
+            (->> (streams/position-stream state)
                  (rx/take-until end-path-events)
                  (rx/map #(preview-next-point %)))
 
@@ -222,12 +240,13 @@
             mousedown-events
             (->> mouse-down
                  (rx/take-until end-path-events)
-                 (rx/with-latest merge (streams/position-stream))
-
+                 ;; We just ignore the mouse event and stream down the
+                 ;; last position event
+                 (rx/with-latest-from #(-> %2) (streams/position-stream state))
                  ;; We change to the stream that emits the first event
                  (rx/switch-map
                   #(rx/race (make-node-events-stream stream)
-                            (make-drag-stream stream %))))]
+                            (make-drag-stream state stream %))))]
 
         (rx/concat
          (rx/of (undo/start-path-undo))
@@ -262,7 +281,11 @@
     ptk/UpdateEvent
     (update [_ state]
       (let [content (get-in state [:workspace-drawing :object :content] [])]
-        (dm/assert! (content? content))
+
+        (dm/assert!
+         "expected valid path content"
+         (check-path-content! content))
+
         (if (> (count content) 1)
           (assoc-in state [:workspace-drawing :object :initialized?] true)
           state)))

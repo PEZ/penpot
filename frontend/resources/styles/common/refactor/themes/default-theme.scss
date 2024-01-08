@@ -4,6 +4,8 @@
 //
 // Copyright (c) KALEIDOS INC
 
+@use "sass:meta";
+
 :root {
   --color-background-primary: var(--dark-gray-1);
   --color-background-secondary: var(--dark-gray-2);
@@ -13,15 +15,22 @@
   --color-background-disabled: var(--off-white);
   --color-foreground-primary: var(--white);
   --color-foreground-secondary: var(--off-white);
+  --color-foreground-tertiary: var(--pink);
   --color-foreground-disabled: var(--dark-gray-4);
   --color-accent-primary: var(--green);
   --color-accent-primary-muted: var(--green-30);
   --color-accent-secondary: var(--lilac);
   --color-accent-tertiary: var(--strong-green);
+
   --overlay-color: rgba(0, 0, 0, 0.4);
   --ok-color: var(--dark-ok-color);
   --warning-color: var(--dark-warning-color);
   --pending-color: var(--dark-pending-color);
   --error-color: var(--dark-error-color);
   --canvas-color: var(--color-canvas);
+
+  --shadow-color: var(--dark-gray-2-30);
+  --radio-button-box-shadow: 0 0 0 1px var(--dark-gray-2-30) inset;
+
+  @include meta.load-css("hljs-dark-theme");
 }

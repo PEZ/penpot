@@ -8,12 +8,12 @@
   (:require
    [app.auth :as auth]
    [app.common.data :as d]
-   [app.common.data.macros :as dm]
    [app.common.exceptions :as ex]
    [app.common.schema :as sm]
    [app.common.uuid :as uuid]
    [app.config :as cf]
    [app.db :as db]
+   [app.db.sql :as-alias sql]
    [app.email :as eml]
    [app.http.session :as session]
    [app.loggers.audit :as audit]
@@ -27,6 +27,7 @@
    [app.tokens :as tokens]
    [app.util.services :as sv]
    [app.util.time :as dt]
+   [app.worker :as-alias wrk]
    [cuerdas.core :as str]))
 
 (declare check-profile-existence!)
@@ -37,30 +38,30 @@
 (declare strip-private-attrs)
 (declare verify-password)
 
-(def schema:profile
-  [:map {:title "Profile"}
-   [:id ::sm/uuid]
-   [:fullname [::sm/word-string {:max 250}]]
-   [:email ::sm/email]
-   [:is-active {:optional true} :boolean]
-   [:is-blocked {:optional true} :boolean]
-   [:is-demo {:optional true} :boolean]
-   [:is-muted {:optional true} :boolean]
-   [:created-at {:optional true} ::sm/inst]
-   [:modified-at {:optional true} ::sm/inst]
-   [:default-project-id {:optional true} ::sm/uuid]
-   [:default-team-id {:optional true} ::sm/uuid]
-   [:props {:optional true}
-    [:map-of {:title "ProfileProps"} :keyword :any]]])
-
-(def profile?
-  (sm/pred-fn schema:profile))
+(def ^:private
+  schema:profile
+  (sm/define
+    [:map {:title "Profile"}
+     [:id ::sm/uuid]
+     [:fullname [::sm/word-string {:max 250}]]
+     [:email ::sm/email]
+     [:is-active {:optional true} :boolean]
+     [:is-blocked {:optional true} :boolean]
+     [:is-demo {:optional true} :boolean]
+     [:is-muted {:optional true} :boolean]
+     [:created-at {:optional true} ::sm/inst]
+     [:modified-at {:optional true} ::sm/inst]
+     [:default-project-id {:optional true} ::sm/uuid]
+     [:default-team-id {:optional true} ::sm/uuid]
+     [:props {:optional true}
+      [:map-of {:title "ProfileProps"} :keyword :any]]]))
 
 ;; --- QUERY: Get profile (own)
 
 (sv/defmethod ::get-profile
   {::rpc/auth false
    ::doc/added "1.18"
+   ::sm/params [:map]
    ::sm/result schema:profile}
   [{:keys [::db/pool] :as cfg} {:keys [::rpc/profile-id]}]
   ;; We need to return the anonymous profile object in two cases, when
@@ -81,11 +82,13 @@
 
 ;; --- MUTATION: Update Profile (own)
 
-(def schema:update-profile
-  [:map {:title "update-profile"}
-   [:fullname [::sm/word-string {:max 250}]]
-   [:lang {:optional true} [:string {:max 5}]]
-   [:theme {:optional true} [:string {:max 250}]]])
+(def ^:private
+  schema:update-profile
+  (sm/define
+    [:map {:title "update-profile"}
+     [:fullname [::sm/word-string {:max 250}]]
+     [:lang {:optional true} [:string {:max 5}]]
+     [:theme {:optional true} [:string {:max 250}]]]))
 
 (sv/defmethod ::update-profile
   {::doc/added "1.0"
@@ -93,23 +96,18 @@
    ::sm/result schema:profile}
   [{:keys [::db/pool] :as cfg} {:keys [::rpc/profile-id fullname lang theme] :as params}]
 
-  (dm/assert!
-   "expected valid profile data"
-   (profile? params))
-
   (db/with-atomic [conn pool]
     ;; NOTE: we need to retrieve the profile independently if we use
     ;; it or not for explicit locking and avoid concurrent updates of
     ;; the same row/object.
-    (let [profile (-> (db/get-by-id conn :profile profile-id ::db/for-update? true)
+    (let [profile (-> (db/get-by-id conn :profile profile-id ::sql/for-update true)
                       (decode-row))
 
           ;; Update the profile map with direct params
           profile (-> profile
                       (assoc :fullname fullname)
                       (assoc :lang lang)
-                      (assoc :theme theme))
-          ]
+                      (assoc :theme theme))]
 
       (db/update! conn :profile
                   {:fullname fullname
@@ -130,11 +128,13 @@
 (declare update-profile-password!)
 (declare invalidate-profile-session!)
 
-(def schema:update-profile-password
-  [:map {:title "update-profile-password"}
-   [:password [::sm/word-string {:max 500}]]
-   ;; Social registered users don't have old-password
-   [:old-password {:optional true} [:maybe [::sm/word-string {:max 500}]]]])
+(def ^:private
+  schema:update-profile-password
+  (sm/define
+    [:map {:title "update-profile-password"}
+     [:password [::sm/word-string {:max 500}]]
+     ;; Social registered users don't have old-password
+     [:old-password {:optional true} [:maybe [::sm/word-string {:max 500}]]]]))
 
 (sv/defmethod ::update-profile-password
   {:doc/added "1.0"
@@ -165,7 +165,7 @@
 
 (defn- validate-password!
   [{:keys [::db/conn] :as cfg} {:keys [profile-id old-password] :as params}]
-  (let [profile (db/get-by-id conn :profile profile-id ::db/for-update? true)]
+  (let [profile (db/get-by-id conn :profile profile-id ::sql/for-update true)]
     (when (and (not= (:password profile) "!")
                (not (:valid (verify-password cfg old-password (:password profile)))))
       (ex/raise :type :validation
@@ -177,16 +177,19 @@
   (when-not (db/read-only? conn)
     (db/update! conn :profile
                 {:password (auth/derive-password password)}
-                {:id id})))
+                {:id id})
+    nil))
 
 ;; --- MUTATION: Update Photo
 
 (declare upload-photo)
 (declare update-profile-photo)
 
-(def schema:update-profile-photo
-  [:map {:title "update-profile-photo"}
-   [:file ::media/upload]])
+(def ^:private
+  schema:update-profile-photo
+  (sm/define
+    [:map {:title "update-profile-photo"}
+     [:file ::media/upload]]))
 
 (sv/defmethod ::update-profile-photo
   {:doc/added "1.1"
@@ -201,7 +204,7 @@
 (defn update-profile-photo
   [{:keys [::db/pool ::sto/storage] :as cfg} {:keys [profile-id file] :as params}]
   (let [photo   (upload-photo cfg params)
-        profile (db/get-by-id pool :profile profile-id ::db/for-update? true)]
+        profile (db/get-by-id pool :profile profile-id ::sql/for-update true)]
 
     ;; Schedule deletion of old photo
     (when-let [id (:photo-id profile)]
@@ -237,9 +240,9 @@
      :content-type (:mtype thumb)}))
 
 (defn upload-photo
-  [{:keys [::sto/storage] :as cfg} {:keys [file]}]
-  (let [params (-> (climit/configure cfg :process-image)
-                   (climit/submit! (partial generate-thumbnail! file)))]
+  [{:keys [::sto/storage ::wrk/executor] :as cfg} {:keys [file]}]
+  (let [params (-> (climit/configure cfg :process-image/global)
+                   (climit/run! (partial generate-thumbnail! file) executor))]
     (sto/put-object! storage params)))
 
 
@@ -248,9 +251,11 @@
 (declare ^:private request-email-change!)
 (declare ^:private change-email-immediately!)
 
-(def schema:request-email-change
-  [:map {:title "request-email-change"}
-   [:email ::sm/email]])
+(def ^:private
+  schema:request-email-change
+  (sm/define
+    [:map {:title "request-email-change"}
+     [:email ::sm/email]]))
 
 (sv/defmethod ::request-email-change
   {::doc/added "1.0"
@@ -315,16 +320,18 @@
 
 ;; --- MUTATION: Update Profile Props
 
-(def schema:update-profile-props
-  [:map {:title "update-profile-props"}
-   [:props [:map-of :keyword :any]]])
+(def ^:private
+  schema:update-profile-props
+  (sm/define
+    [:map {:title "update-profile-props"}
+     [:props [:map-of :keyword :any]]]))
 
 (sv/defmethod ::update-profile-props
   {::doc/added "1.0"
    ::sm/params schema:update-profile-props}
   [{:keys [::db/pool]} {:keys [::rpc/profile-id props]}]
   (db/with-atomic [conn pool]
-    (let [profile (get-profile conn profile-id ::db/for-update? true)
+    (let [profile (get-profile conn profile-id ::sql/for-update true)
           props   (reduce-kv (fn [props k v]
                                ;; We don't accept namespaced keys
                                (if (simple-ident? k)
@@ -433,13 +440,15 @@
 (defn derive-password
   [cfg password]
   (when password
-    (-> (climit/configure cfg :derive-password)
-        (climit/submit! (partial auth/derive-password password)))))
+    (-> (climit/configure cfg :derive-password/global)
+        (climit/run! (partial auth/derive-password password)
+                     (::wrk/executor cfg)))))
 
 (defn verify-password
   [cfg password password-data]
-  (-> (climit/configure cfg :derive-password)
-      (climit/submit! (partial auth/verify-password password password-data))))
+  (-> (climit/configure cfg :derive-password/global)
+      (climit/run! (partial auth/verify-password password password-data)
+                   (::wrk/executor cfg))))
 
 (defn decode-row
   [{:keys [props] :as row}]

@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.auth.recovery
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.spec :as us]
    [app.main.data.messages :as dm]
@@ -60,33 +61,36 @@
                                        (fm/validate-not-empty :password-1 (tr "auth.password-not-empty"))
                                        (fm/validate-not-empty :password-2 (tr "auth.password-not-empty"))]
                           :initial params)]
-    [:& fm/form {:on-submit on-submit
-                 :form form}
-     [:div.fields-row
+    [:& fm/form {:on-submit on-submit :form form}
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input {:type "password"
                     :name :password-1
-                    :label (tr "auth.new-password")}]]
+                    :show-success? true
+                    :label (tr "auth.new-password")
+                    :class (stl/css :form-field)}]]
 
-     [:div.fields-row
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input {:type "password"
                     :name :password-2
-                    :label (tr "auth.confirm-password")}]]
+                    :show-success? true
+                    :label (tr "auth.confirm-password")
+                    :class (stl/css :form-field)}]]
 
      [:> fm/submit-button*
-      {:label (tr "auth.recovery-submit")}]]))
+      {:label (tr "auth.recovery-submit")
+       :class (stl/css :submit-btn)}]]))
 
 ;; --- Recovery Request Page
 
 (mf/defc recovery-page
   [{:keys [params] :as props}]
-  [:section.generic-form
-   [:div.form-container
-    [:h1 "Forgot your password?"]
-    [:div.subtitle "Please enter your new password"]
-    [:& recovery-form {:params params}]
+  [:div {:class (stl/css :auth-form)}
+   [:h1 {:class (stl/css :auth-title)} "Forgot your password?"]
+   [:div {:class (stl/css :auth-subtitle)} "Please enter your new password"]
+   [:hr {:class (stl/css :separator)}]
+   [:& recovery-form {:params params}]
 
-    [:div.links
-     [:div.link-entry
-      [:a {:on-click #(st/emit! (rt/nav :auth-login))}
-       (tr "profile.recovery.go-to-login")]]]]])
-
+   [:div {:class (stl/css :links)}
+    [:div {:class (stl/css :link-entry)}
+     [:a {:on-click #(st/emit! (rt/nav :auth-login))}
+      (tr "profile.recovery.go-to-login")]]]])

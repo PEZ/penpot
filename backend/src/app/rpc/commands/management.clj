@@ -13,13 +13,16 @@
    [app.common.files.migrations :as pmg]
    [app.common.schema :as sm]
    [app.common.uuid :as uuid]
+   [app.config :as cf]
    [app.db :as db]
+   [app.features.fdata :as feat.fdata]
+   [app.http.sse :as sse]
    [app.loggers.webhooks :as-alias webhooks]
    [app.rpc :as-alias rpc]
    [app.rpc.commands.binfile :as binfile]
    [app.rpc.commands.files :as files]
    [app.rpc.commands.projects :as proj]
-   [app.rpc.commands.teams :as teams :refer [create-project-role create-project]]
+   [app.rpc.commands.teams :as teams]
    [app.rpc.doc :as-alias doc]
    [app.setup :as-alias setup]
    [app.setup.templates :as tmpl]
@@ -27,35 +30,53 @@
    [app.util.pointer-map :as pmap]
    [app.util.services :as sv]
    [app.util.time :as dt]
+   [app.worker :as-alias wrk]
    [clojure.walk :as walk]
+   [promesa.core :as p]
    [promesa.exec :as px]))
+
+(defn- index-row
+  [index obj]
+  (assoc index (:id obj) (uuid/next)))
+
+(defn- lookup-index
+  [id index]
+  (get index id id))
+
+(defn- remap-id
+  [item index key]
+  (cond-> item
+    (contains? item key)
+    (update key lookup-index index)))
 
 ;; --- COMMAND: Duplicate File
 
 (declare duplicate-file)
 
-(def ^:private schema:duplicate-file
-  [:map {:title "duplicate-file"}
-   [:file-id ::sm/uuid]
-   [:name {:optional true} :string]])
+(def ^:private
+  schema:duplicate-file
+  (sm/define
+    [:map {:title "duplicate-file"}
+     [:file-id ::sm/uuid]
+     [:name {:optional true} :string]]))
 
 (sv/defmethod ::duplicate-file
   "Duplicate a single file in the same team."
   {::doc/added "1.16"
    ::webhooks/event? true
    ::sm/params schema:duplicate-file}
-  [{:keys [::db/pool] :as cfg} {:keys [::rpc/profile-id] :as params}]
-  (db/with-atomic [conn pool]
-    (duplicate-file conn (assoc params :profile-id profile-id))))
+  [cfg {:keys [::rpc/profile-id file-id] :as params}]
+  (db/tx-run! cfg (fn [{:keys [::db/conn] :as cfg}]
+                    (db/exec-one! conn ["SET CONSTRAINTS ALL DEFERRED"])
 
-(defn- remap-id
-  [item index key]
-  (cond-> item
-    (contains? item key)
-    (assoc key (get index (get item key) (get item key)))))
+                    (let [params (-> params
+                                     (assoc :index {file-id (uuid/next)})
+                                     (assoc :profile-id profile-id)
+                                     (assoc ::reset-shared-flag? true))]
+                      (duplicate-file cfg params)))))
 
 (defn- process-file
-  [conn {:keys [id] :as file} index]
+  [cfg index {:keys [id] :as file}]
   (letfn [(process-form [form]
             (cond-> form
               ;; Relink library items
@@ -98,52 +119,66 @@
                                  (dissoc k))
                              res)))
                        media
-                       media))]
-    (-> file
-        (update :id #(get index %))
-        (update :data
-                (fn [data]
-                  (binding [pmap/*load-fn* (partial files/load-pointer conn id)
-                            pmap/*tracked* (atom {})]
-                    (let [file-id (get index id)
-                          data    (-> data
-                                      (blob/decode)
-                                      (assoc :id file-id)
-                                      (pmg/migrate-data)
-                                      (update :pages-index relink-shapes)
-                                      (update :components relink-shapes)
-                                      (update :media relink-media)
-                                      (d/without-nils)
-                                      (files/process-pointers pmap/clone)
-                                      (blob/encode))]
-                      (files/persist-pointers! conn file-id)
-                      data)))))))
+                       media))
 
-(def sql:get-used-libraries
-  "select flr.*
-     from file_library_rel as flr
-    inner join file as l on (flr.library_file_id = l.id)
-    where flr.file_id = ?
-      and l.deleted_at is null")
+          (process-file [{:keys [id] :as file}]
+            (-> file
+                (update :data assoc :id id)
+                (pmg/migrate-file)
+                (update :data (fn [data]
+                                (-> data
+                                    (update :pages-index relink-shapes)
+                                    (update :components relink-shapes)
+                                    (update :media relink-media)
+                                    (d/without-nils))))))]
 
-(def sql:get-used-media-objects
-  "select fmo.*
-     from file_media_object as fmo
-    inner join storage_object as so on (fmo.media_id = so.id)
-    where fmo.file_id = ?
-      and so.deleted_at is null")
+    (let [file (binding [pmap/*load-fn* (partial feat.fdata/load-pointer cfg id)]
+                 (-> file
+                     (update :id lookup-index index)
+                     (update :project-id lookup-index index)
+                     (update :data feat.fdata/process-pointers deref)
+                     (process-file)))
 
-(defn duplicate-file*
-  [conn {:keys [profile-id file index project-id name flibs fmeds]} {:keys [reset-shared-flag]}]
-  (let [flibs    (or flibs (db/exec! conn [sql:get-used-libraries (:id file)]))
-        fmeds    (or fmeds (db/exec! conn [sql:get-used-media-objects (:id file)]))
+          file (if (contains? (:features file) "fdata/objects-map")
+                 (feat.fdata/enable-objects-map file)
+                 file)
+
+          file (if (contains? (:features file) "fdata/pointer-map")
+                 (binding [pmap/*tracked* (pmap/create-tracked)]
+                   (let [file (feat.fdata/enable-pointer-map file)]
+                     (feat.fdata/persist-pointers! cfg (:id file))
+                     file))
+                 file)]
+      file)))
+
+(defn duplicate-file
+  [{:keys [::db/conn] :as cfg} {:keys [profile-id index file-id name ::reset-shared-flag?]}]
+  (let [;; We don't touch the original file on duplication
+        file     (files/get-file cfg file-id :migrate? false)
+
+        ;; We only check permissions if profile-id is present; it can
+        ;; be omited when this function is called from SREPL helpers
+        _        (when (uuid? profile-id)
+                   (proj/check-edition-permissions! conn profile-id (:project-id file)))
+
+        flibs    (let [sql (str "SELECT flr.* "
+                                "  FROM file_library_rel AS flr "
+                                "  JOIN file AS l ON (flr.library_file_id = l.id) "
+                                " WHERE flr.file_id = ? AND l.deleted_at is null")]
+                   (db/exec! conn [sql file-id]))
+
+        fmeds    (let [sql (str "SELECT fmo.* "
+                                "  FROM file_media_object AS fmo "
+                                "  JOIN storage_object AS so ON (fmo.media_id = so.id) "
+                                " WHERE fmo.file_id = ? AND so.deleted_at is null")]
+                   (db/exec! conn [sql file-id]))
 
         ;; memo uniform creation/modification date
         now      (dt/now)
         ignore   (dt/plus now (dt/duration {:seconds 5}))
 
         ;; add to the index all file media objects.
-        index    (reduce #(assoc %1 (:id %2) (uuid/next)) index fmeds)
+        index    (reduce index-row index fmeds)
 
         flibs-xf (comp
                   (map #(remap-id % index :file-id))
@@ -163,13 +198,10 @@
         fmeds   (sequence fmeds-xf fmeds)
 
         file    (cond-> file
-                  (some? project-id)
-                  (assoc :project-id project-id)
-
-                  (some? name)
+                  (string? name)
                   (assoc :name name)
 
-                  (true? reset-shared-flag)
+                  (true? reset-shared-flag?)
                   (assoc :is-shared false))
 
         file    (-> file
@@ -177,101 +209,199 @@
                     (assoc :modified-at now)
                     (assoc :ignore-sync-until ignore))
 
-        file    (process-file conn file index)]
+        file    (process-file cfg index file)]
 
-    (db/insert! conn :file file)
-    (db/insert! conn :file-profile-rel
-                {:file-id (:id file)
-                 :profile-id profile-id
-                 :is-owner true
-                 :is-admin true
-                 :can-edit true})
+    (db/insert! conn :file
+                (-> file
+                    (update :features #(db/create-array conn "text" %))
+                    (update :data blob/encode))
+                {::db/return-keys false})
+
+    ;; The file profile creation is optional, so when no profile is
+    ;; present (when this function is called from profile less
+    ;; environment: SREPL) we just omit the creation of the relation
+
+    (when (uuid? profile-id)
+      (db/insert! conn :file-profile-rel
+                  {:file-id (:id file)
+                   :profile-id profile-id
+                   :is-owner true
+                   :is-admin true
+                   :can-edit true}
+                  {::db/return-keys? false}))
 
     (doseq [params flibs]
-      (db/insert! conn :file-library-rel params))
+      (db/insert! conn :file-library-rel params ::db/return-keys false))
 
     (doseq [params fmeds]
-      (db/insert! conn :file-media-object params))
+      (db/insert! conn :file-media-object params ::db/return-keys false))
 
     file))
-
-(defn duplicate-file
-  [conn {:keys [profile-id file-id] :as params}]
-  (let [file   (db/get-by-id conn :file file-id)
-        index  {file-id (uuid/next)}
-        params (assoc params :index index :file file)]
-    (proj/check-edition-permissions! conn profile-id (:project-id file))
-    (db/exec-one! conn ["SET CONSTRAINTS ALL DEFERRED"])
-    (-> (duplicate-file* conn params {:reset-shared-flag true})
-        (update :data blob/decode)
-        (update :features db/decode-pgarray #{}))))
 
 ;; --- COMMAND: Duplicate Project
 
 (declare duplicate-project)
 
-(def ^:private schema:duplicate-project
-  [:map {:title "duplicate-project"}
-   [:project-id ::sm/uuid]
-   [:name {:optional true} :string]])
+(def ^:private
+  schema:duplicate-project
+  (sm/define
+    [:map {:title "duplicate-project"}
+     [:project-id ::sm/uuid]
+     [:name {:optional true} :string]]))
 
 (sv/defmethod ::duplicate-project
   "Duplicate an entire project with all the files"
   {::doc/added "1.16"
    ::webhooks/event? true
    ::sm/params schema:duplicate-project}
-  [{:keys [::db/pool] :as cfg} params]
-  (db/with-atomic [conn pool]
-    (duplicate-project conn (assoc params :profile-id (::rpc/profile-id params)))))
+  [cfg {:keys [::rpc/profile-id] :as params}]
+  (db/tx-run! cfg (fn [cfg]
+                      ;; Defer all constraints
+                    (db/exec-one! cfg ["SET CONSTRAINTS ALL DEFERRED"])
+                    (duplicate-project cfg (assoc params :profile-id profile-id)))))
 
 (defn duplicate-project
-  [conn {:keys [profile-id project-id name] :as params}]
-
-  ;; Defer all constraints
-  (db/exec-one! conn ["SET CONSTRAINTS ALL DEFERRED"])
-
+  [{:keys [::db/conn] :as cfg} {:keys [profile-id project-id name] :as params}]
   (let [project (-> (db/get-by-id conn :project project-id)
                     (assoc :is-pinned false))
 
         files   (db/query conn :file
-                  {:project-id (:id project)
-                   :deleted-at nil}
-                  {:columns [:id]})
+                          {:project-id project-id
+                           :deleted-at nil}
+                          {:columns [:id]})
+
+        index  (reduce index-row {project-id (uuid/next)} files)
 
         project (cond-> project
                   (string? name)
                   (assoc :name name)
 
                   :always
-                  (assoc :id (uuid/next)))]
+                  (update :id lookup-index index))]
 
     ;; Check if the source team-id allow creating new project for current user
     (teams/check-edition-permissions! conn profile-id (:team-id project))
 
     ;; create the duplicated project and assign the current profile as
     ;; a project owner
-    (create-project conn project)
-    (create-project-role conn profile-id (:id project) :owner)
+    (teams/create-project conn project)
 
-    ;; duplicate all files
-    (let [index  (reduce #(assoc %1 (:id %2) (uuid/next)) {} files)
-          params (-> params
-                     (dissoc :name)
-                     (assoc :project-id (:id project))
-                     (assoc :index index))]
-      (doseq [{:keys [id]} files]
-        (let [file   (db/get-by-id conn :file id)
-              params (assoc params :file file)
-              opts   {:reset-shared-flag false}]
-          (duplicate-file* conn params opts))))
+    ;; The project profile creation is optional, so when no profile is
+    ;; present (when this function is called from profile less
+    ;; environment: SREPL) we just omit the creation of the relation
+    (when (uuid? profile-id)
+      (teams/create-project-role conn profile-id (:id project) :owner))
 
-    ;; return the created project
+    (doseq [{:keys [id] :as file} files]
+      (let [params (-> params
+                       (dissoc :name)
+                       (assoc :file-id id)
+                       (assoc :index index)
+                       (assoc ::reset-shared-flag? false))]
+        (duplicate-file cfg params)))
+
     project))
+
+(defn duplicate-team
+  [{:keys [::db/conn] :as cfg} & {:keys [profile-id team-id name] :as params}]
+
+  ;; Check if the source team-id allowed to be read by the user if
+  ;; profile-id is present; it can be ommited if this function is
+  ;; called from SREPL helpers where no profile is available
+  (when (uuid? profile-id)
+    (teams/check-read-permissions! conn profile-id team-id))
+
+  (let [projs (db/query conn :project
+                        {:team-id team-id})
+
+        files (let [sql (str "SELECT f.id "
+                             "  FROM file AS f "
+                             "  JOIN project AS p ON (p.id = f.project_id) "
+                             " WHERE p.team_id = ? "
+                             "   AND p.deleted_at IS NULL "
+                             "   AND f.deleted_at IS NULL")]
+                (db/exec! conn [sql team-id]))
+
+        trels (db/query conn :team-profile-rel
+                        {:team-id team-id})
+
+        prels (let [sql (str "SELECT r.* FROM project_profile_rel AS r "
+                             "  JOIN project AS p ON (r.project_id = p.id) "
+                             " WHERE p.team_id = ?")]
+                (db/exec! conn [sql team-id]))
+
+
+        fonts (db/query conn :team-font-variant
+                        {:team-id team-id})
+
+        index (as-> {team-id (uuid/next)} index
+                (reduce index-row index projs)
+                (reduce index-row index files)
+                (reduce index-row index fonts))
+
+        team  (db/get-by-id conn :team team-id)
+        team  (cond-> team
+                (string? name)
+                (assoc :name name)
+
+                :always
+                (update :id lookup-index index))]
+
+    ;; FIXME: disallow clone default team
+
+    ;; Create the new team in the database
+    (db/insert! conn :team team)
+
+    ;; Duplicate team <-> profile relations
+    (doseq [params trels]
+      (let [params (-> params
+                       (assoc :id (uuid/next))
+                       (update :team-id lookup-index index))]
+        (db/insert! conn :team-profile-rel params
+                    {::db/return-keys? false})))
+
+    ;; Duplucate team fonts
+    (doseq [font fonts]
+      (let [params (-> font
+                       (update :id lookup-index index)
+                       (update :team-id lookup-index index))]
+        (db/insert! conn :team-font-variant params
+                    {::db/return-keys? false})))
+
+    ;; Create all the projects in the database
+    (doseq [project projs]
+      (let [project (-> project
+                        (update :id lookup-index index)
+                        (update :team-id lookup-index index))]
+        (teams/create-project conn project)
+
+        ;; The project profile creation is optional, so when no profile is
+        ;; present (when this function is called from profile less
+        ;; environment: SREPL) we just omit the creation of the relation
+        (when (uuid? profile-id)
+          (teams/create-project-role conn profile-id (:id project) :owner))))
+
+    ;; Duplicate project <-> profile relations
+    (doseq [params prels]
+      (let [params (-> params
+                       (assoc :id (uuid/next))
+                       (update :project-id lookup-index index))]
+        (db/insert! conn :project-profile-rel params)))
+
+    (doseq [file-id (map :id files)]
+      (let [params (-> params
+                       (dissoc :name)
+                       (assoc :index index)
+                       (assoc :file-id file-id)
+                       (assoc ::reset-shared-flag? false))]
+        (duplicate-file cfg params)))
+
+    team))
 
 ;; --- COMMAND: Move file
 
 (def sql:get-files
-  "select id, project_id from file where id = ANY(?)")
+  "select id, features, project_id from file where id = ANY(?)")
 
 (def sql:move-files
   "update file set project_id = ? where id = ANY(?)")
@@ -295,7 +425,8 @@
   [{:keys [::db/conn] :as cfg} {:keys [profile-id ids project-id] :as params}]
 
   (let [fids    (db/create-array conn "uuid" ids)
-        files   (db/exec! conn [sql:get-files fids])
+        files   (->> (db/exec! conn [sql:get-files fids])
+                     (map files/decode-row))
         source  (into #{} (map :project-id) files)
         pids    (->> (conj source project-id)
                      (db/create-array conn "uuid"))]
@@ -313,9 +444,14 @@
       (proj/check-edition-permissions! conn profile-id project-id))
 
     ;; Check the team compatibility
-    (let [orig-team (teams/get-team cfg :profile-id profile-id :project-id (first source))
-          dest-team (teams/get-team cfg :profile-id profile-id :project-id project-id)]
-      (cfeat/check-teams-compatibility! orig-team dest-team))
+    (let [orig-team (teams/get-team conn :profile-id profile-id :project-id (first source))
+          dest-team (teams/get-team conn :profile-id profile-id :project-id project-id)]
+      (cfeat/check-teams-compatibility! orig-team dest-team)
+
+      ;; Check if all pending to move files are compaib
+      (let [features (cfeat/get-team-enabled-features cf/flags dest-team)]
+        (doseq [file files]
+          (cfeat/check-file-features! features (:features file)))))
 
     ;; move all files to the project
     (db/exec-one! conn [sql:move-files project-id fids])
@@ -337,10 +473,12 @@
 
     nil))
 
-(def ^:private schema:move-files
-  [:map {:title "move-files"}
-   [:ids ::sm/set-of-uuid]
-   [:project-id ::sm/uuid]])
+(def ^:private
+  schema:move-files
+  (sm/define
+    [:map {:title "move-files"}
+     [:ids ::sm/set-of-uuid]
+     [:project-id ::sm/uuid]]))
 
 (sv/defmethod ::move-files
   "Move a set of files from one project to other."
@@ -368,9 +506,17 @@
     (teams/check-edition-permissions! conn profile-id team-id)
 
     ;; Check the teams compatibility
-    (let [orig-team (teams/get-team cfg :profile-id profile-id :team-id (:team-id project))
-          dest-team (teams/get-team cfg :profile-id profile-id :team-id team-id)]
-      (cfeat/check-teams-compatibility! orig-team dest-team))
+    (let [orig-team (teams/get-team conn :profile-id profile-id :team-id (:team-id project))
+          dest-team (teams/get-team conn :profile-id profile-id :team-id team-id)]
+      (cfeat/check-teams-compatibility! orig-team dest-team)
+
+      ;; Check if all pending to move files are compaib
+      (let [features (cfeat/get-team-enabled-features cf/flags dest-team)]
+        (doseq [file (->> (db/query conn :file
+                                    {:project-id project-id}
+                                    {:columns [:features]})
+                          (map files/decode-row))]
+          (cfeat/check-file-features! features (:features file)))))
 
     ;; move project to the destination team
     (db/update! conn :project
@@ -382,10 +528,12 @@
 
     nil))
 
-(def ^:private schema:move-project
-  [:map {:title "move-project"}
-   [:team-id ::sm/uuid]
-   [:project-id ::sm/uuid]])
+(def ^:private
+  schema:move-project
+  (sm/define
+    [:map {:title "move-project"}
+     [:team-id ::sm/uuid]
+     [:project-id ::sm/uuid]]))
 
 (sv/defmethod ::move-project
   "Move projects between teams"
@@ -397,43 +545,53 @@
 
 ;; --- COMMAND: Clone Template
 
-(defn- clone-template!
-  [{:keys [::db/conn] :as cfg} {:keys [profile-id template-id project-id]}]
-  (let [template (tmpl/get-template-stream cfg template-id)
-        project  (db/get-by-id conn :project project-id {:columns [:id :team-id]})]
+(def ^:private
+  schema:clone-template
+  (sm/define
+    [:map {:title "clone-template"}
+     [:project-id ::sm/uuid]
+     [:template-id ::sm/word-string]]))
+
+(declare ^:private clone-template)
+
+(sv/defmethod ::clone-template
+  "Clone into the specified project the template by its id."
+  {::doc/added "1.16"
+   ::sse/stream? true
+   ::webhooks/event? true
+   ::sm/params schema:clone-template}
+  [{:keys [::db/pool] :as cfg} {:keys [::rpc/profile-id project-id template-id] :as params}]
+  (let [project   (db/get-by-id pool :project project-id {:columns [:id :team-id]})
+        _         (teams/check-edition-permissions! pool profile-id (:team-id project))
+        template  (tmpl/get-template-stream cfg template-id)
+        params    (-> cfg
+                      (assoc ::binfile/input template)
+                      (assoc ::binfile/project-id (:id project))
+                      (assoc ::binfile/profile-id profile-id)
+                      (assoc ::binfile/ignore-index-errors? true)
+                      (assoc ::binfile/migrate? true))]
 
     (when-not template
       (ex/raise :type :not-found
                 :code :template-not-found
                 :hint "template not found"))
 
-    (teams/check-edition-permissions! conn profile-id (:team-id project))
+    (sse/response #(clone-template params))))
 
-    (-> cfg
-        ;; FIXME: maybe reuse the conn instead of creating more
-        ;; connections in the import process?
-        (dissoc ::db/conn)
-        (assoc ::binfile/input template)
-        (assoc ::binfile/project-id (:id project))
-        (assoc ::binfile/profile-id profile-id)
-        (assoc ::binfile/ignore-index-errors? true)
-        (assoc ::binfile/migrate? true)
-        (binfile/import!))))
+(defn- clone-template
+  [{:keys [::wrk/executor ::binfile/project-id] :as params}]
+  (db/tx-run! params
+              (fn [{:keys [::db/conn] :as params}]
+                ;; NOTE: the importation process performs some operations that
+                ;; are not very friendly with virtual threads, and for avoid
+                ;; unexpected blocking of other concurrent operations we
+                ;; dispatch that operation to a dedicated executor.
+                (let [result (p/thread-call executor (partial binfile/import! params))]
+                  (db/update! conn :project
+                              {:modified-at (dt/now)}
+                              {:id project-id})
 
-(def schema:clone-template
-  [:map {:title "clone-template"}
-   [:project-id ::sm/uuid]
-   [:template-id ::sm/word-string]])
-
-(sv/defmethod ::clone-template
-  "Clone into the specified project the template by its id."
-  {::doc/added "1.16"
-   ::webhooks/event? true
-   ::sm/params schema:clone-template}
-  [{:keys [::db/pool] :as cfg} {:keys [::rpc/profile-id] :as params}]
-  (db/with-atomic [conn pool]
-    (-> (assoc cfg ::db/conn conn)
-        (clone-template! (assoc params :profile-id profile-id)))))
+                  (deref result)))))
 
 ;; --- COMMAND: Get list of builtin templates
 

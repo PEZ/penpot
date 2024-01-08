@@ -13,7 +13,6 @@
    [app.main.data.workspace.colors :as dc]
    [app.main.store :as st]
    [app.main.ui.components.title-bar :refer [title-bar]]
-   [app.main.ui.context :as ctx]
    [app.main.ui.hooks :as h]
    [app.main.ui.icons :as i]
    [app.main.ui.workspace.sidebar.options.rows.color-row :refer [color-row]]
@@ -44,8 +43,7 @@
 (mf/defc fill-menu
   {::mf/wrap [#(mf/memo' % (mf/check-props ["ids" "values"]))]}
   [{:keys [ids type values disable-remove?] :as props}]
-  (let [new-css-system  (mf/use-ctx ctx/new-css-system)
-        label (case type
+  (let [label (case type
                 :multiple (tr "workspace.options.selection-fill")
                 :group (tr "workspace.options.group-fill")
                 (tr "workspace.options.fill"))
@@ -61,7 +59,9 @@
 
         toggle-content  (mf/use-fn #(swap! state* not))
 
+        open-content    (mf/use-fn #(reset! state* true))
 
+        close-content    (mf/use-fn #(reset! state* false))
 
         hide-fill-on-export? (:hide-fill-on-export values false)
 
@@ -72,7 +72,9 @@
          (mf/deps ids)
          (fn [_]
            (st/emit! (dc/add-fill ids {:color default-color
-                                       :opacity 1}))))
+                                       :opacity 1}))
+
+           (when (not (some? (seq fills))) (open-content))))
 
         on-change
         (mf/use-fn
@@ -92,7 +94,8 @@
         (fn [index]
           (fn []
             (st/emit! (dc/remove-fill ids {:color default-color
-                                           :opacity 1} index))))
+                                           :opacity 1} index))
+            (when (= 1 (count (seq fills))) (close-content))))
         on-remove-all
         (fn [_]
           (st/emit! (dc/remove-all-fills ids {:color clr/black
@@ -132,81 +135,28 @@
             (dom/set-attribute! checkbox "indeterminate" true)
             (dom/remove-attribute! checkbox "indeterminate")))))
 
-    (if new-css-system
-      [:div {:class (stl/css :element-set)}
-       [:div {:class (stl/css :element-title)}
-        [:& title-bar {:collapsable? has-fills?
-                       :collapsed?   (not open?)
-                       :on-collapsed toggle-content
-                       :title        label
-                       :class        (stl/css-case :title-spacing-fill (not has-fills?))}
+    [:div {:class (stl/css :element-set)}
+     [:div {:class (stl/css :element-title)}
+      [:& title-bar {:collapsable? has-fills?
+                     :collapsed?   (not open?)
+                     :on-collapsed toggle-content
+                     :title        label
+                     :class        (stl/css-case :title-spacing-fill (not has-fills?))}
 
-         (when (and (not disable-remove?) (not (= :multiple fills)))
-           [:button {:class (stl/css :add-fill)
-                     :on-click on-add} i/add-refactor])]]
+       (when (and (not disable-remove?) (not (= :multiple fills)))
+         [:button {:class (stl/css :add-fill)
+                   :on-click on-add} i/add-refactor])]]
 
-       (when open?
-         [:div {:class (stl/css :element-content)}
-          (cond
-            (= :multiple fills)
-            [:div {:class (stl/css :element-set-options-group)}
-             [:div {:class (stl/css :group-label)}
-              (tr "settings.multiple")]
-             [:button {:on-click on-remove-all
-                       :class (stl/css :remove-btn)}
-              i/remove-refactor]]
-
-            (seq fills)
-            [:& h/sortable-container {}
-             (for [[index value] (d/enumerate (:fills values []))]
-               [:& color-row {:color {:color (:fill-color value)
-                                      :opacity (:fill-opacity value)
-                                      :id (:fill-color-ref-id value)
-                                      :file-id (:fill-color-ref-file value)
-                                      :gradient (:fill-color-gradient value)}
-                              :key index
-                              :index index
-                              :title (tr "workspace.options.fill")
-                              :on-change (on-change index)
-                              :on-reorder (on-reorder index)
-                              :on-detach (on-detach index)
-                              :on-remove (on-remove index)
-                              :disable-drag disable-drag
-                              :on-focus on-focus
-                              :select-on-focus (not @disable-drag)
-                              :on-blur on-blur}])])
-
-          (when (or (= type :frame)
-                    (and (= type :multiple) (some? (:hide-fill-on-export values))))
-            [:div {:class (stl/css :checkbox)}
-             [:label {:for "show-fill-on-export"
-                      :class (stl/css-case :global/checked (not hide-fill-on-export?))}
-              [:span {:class (stl/css-case :check-mark true
-                                           :checked (not hide-fill-on-export?))}
-               (when (not hide-fill-on-export?)
-                 i/status-tick-refactor)]
-              (tr "workspace.options.show-fill-on-export")
-              [:input {:type "checkbox"
-                       :id "show-fill-on-export"
-                       :ref checkbox-ref
-                       :checked (not hide-fill-on-export?)
-                       :on-change on-change-show-fill-on-export}]]])])]
-
-      [:div.element-set
-       [:div.element-set-title
-        [:span label]
-        (when (and (not disable-remove?) (not (= :multiple fills)))
-          [:div.add-page {:on-click on-add} i/close])]
-
-       [:div.element-set-content
-
+     (when open?
+       [:div {:class (stl/css :element-content)}
         (cond
           (= :multiple fills)
-          [:div.element-set-options-group
-           [:div.element-set-label (tr "settings.multiple")]
-           [:div.element-set-actions
-            [:div.element-set-actions-button {:on-click on-remove-all}
-             i/minus]]]
+          [:div {:class (stl/css :element-set-options-group)}
+           [:div {:class (stl/css :group-label)}
+            (tr "settings.multiple")]
+           [:button {:on-click on-remove-all
+                     :class (stl/css :remove-btn)}
+            i/remove-refactor]]
 
           (seq fills)
           [:& h/sortable-container {}
@@ -215,7 +165,8 @@
                                     :opacity (:fill-opacity value)
                                     :id (:fill-color-ref-id value)
                                     :file-id (:fill-color-ref-file value)
-                                    :gradient (:fill-color-gradient value)}
+                                    :gradient (:fill-color-gradient value)
+                                    :image (:fill-image value)}
                             :key index
                             :index index
                             :title (tr "workspace.options.fill")
@@ -230,12 +181,16 @@
 
         (when (or (= type :frame)
                   (and (= type :multiple) (some? (:hide-fill-on-export values))))
-          [:div.input-checkbox
-           [:input {:type "checkbox"
-                    :id "show-fill-on-export"
-                    :ref checkbox-ref
-                    :checked (not hide-fill-on-export?)
-                    :on-change on-change-show-fill-on-export}]
-
-           [:label {:for "show-fill-on-export"}
-            (tr "workspace.options.show-fill-on-export")]])]])))
+          [:div {:class (stl/css :checkbox)}
+           [:label {:for "show-fill-on-export"
+                    :class (stl/css-case :global/checked (not hide-fill-on-export?))}
+            [:span {:class (stl/css-case :check-mark true
+                                         :checked (not hide-fill-on-export?))}
+             (when (not hide-fill-on-export?)
+               i/status-tick-refactor)]
+            (tr "workspace.options.show-fill-on-export")
+            [:input {:type "checkbox"
+                     :id "show-fill-on-export"
+                     :ref checkbox-ref
+                     :checked (not hide-fill-on-export?)
+                     :on-change on-change-show-fill-on-export}]]])])]))

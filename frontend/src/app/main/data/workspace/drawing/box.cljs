@@ -24,8 +24,10 @@
    [app.main.data.workspace.state-helpers :as wsh]
    [app.main.snap :as snap]
    [app.main.streams :as ms]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [app.util.array :as array]
+   [app.util.mouse :as mse]
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 (defn adjust-ratio
   [point initial]
@@ -76,7 +78,13 @@
   (ptk/reify ::handle-drawing
     ptk/WatchEvent
     (watch [_ state stream]
-      (let [stoper       (rx/filter #(or (ms/mouse-up? %) (= % :interrupt))  stream)
+      (let [stoper       (rx/merge
+                          (->> stream
+                               (rx/filter mse/mouse-event?)
+                               (rx/filter mse/mouse-up-event?))
+                          (->> stream
+                               (rx/filter #(= % :interrupt))))
+
             layout       (get state :workspace-layout)
             zoom         (dm/get-in state [:workspace-local :zoom] 1)
 
@@ -121,12 +129,11 @@
 
                (->> ms/mouse-position
                     (rx/filter #(> (gpt/distance % initial) (/ 2 zoom)))
-                    (rx/with-latest vector ms/mouse-position-shift)
-                    (rx/with-latest conj ms/mouse-position-mod)
+                    (rx/with-latest-from ms/mouse-position-shift ms/mouse-position-mod)
                     (rx/switch-map
                      (fn [[point :as current]]
                        (->> (snap/closest-snap-point page-id [shape] objects layout zoom focus point)
-                            (rx/map #(conj current %)))))
+                            (rx/map (partial array/conj current)))))
                     (rx/map
                      (fn [[_ shift? mod? point]]
                        #(update-drawing % initial (cond-> point snap-pixel? (gpt/round-step snap-prec)) shift? mod?)))))

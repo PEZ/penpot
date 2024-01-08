@@ -6,14 +6,15 @@
 
 (ns app.main.ui.workspace.context-menu
   "A workspace specific context menu (mouse right click)."
-  (:require-macros [app.main.style :refer [css]])
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
-   [app.common.pages.helpers :as cph]
+   [app.common.files.helpers :as cfh]
    [app.common.types.component :as ctk]
    [app.common.types.container :as ctn]
    [app.common.types.page :as ctp]
+   [app.common.types.shape.layout :as ctl]
    [app.common.uuid :as uuid]
    [app.main.data.events :as ev]
    [app.main.data.modal :as modal]
@@ -30,7 +31,6 @@
    [app.main.store :as st]
    [app.main.ui.components.dropdown :refer [dropdown]]
    [app.main.ui.components.shape-icon-refactor :as sic]
-   [app.main.ui.context :as ctx]
    [app.main.ui.icons :as i]
    [app.main.ui.workspace.sidebar.assets.common :as cmm]
    [app.util.dom :as dom]
@@ -48,10 +48,9 @@
   (dom/stop-propagation event))
 
 (mf/defc menu-entry
-  [{:keys [title shortcut on-click on-pointer-enter on-pointer-leave on-unmount children selected? icon] :as props}]
+  [{:keys [title shortcut on-click on-pointer-enter on-pointer-leave on-unmount children selected? icon disabled] :as props}]
   (let [submenu-ref (mf/use-ref nil)
         hovering? (mf/use-ref false)
-        new-css-system (mf/use-ctx ctx/new-css-system)
         on-pointer-enter
         (mf/use-callback
          (fn []
@@ -85,76 +84,51 @@
      (constantly on-unmount))
 
     (if icon
-      [:li {:class (if new-css-system
-                     (dom/classnames (css :icon-menu-item) true)
-                     (dom/classnames :icon-menu-item true))
+      [:li {:class (stl/css :icon-menu-item)
+            :disabled disabled
             :ref set-dom-node
             :on-click on-click
             :on-pointer-enter on-pointer-enter
             :on-pointer-leave on-pointer-leave}
        [:span
-        {:class (if new-css-system
-                  (dom/classnames (css :icon-wrapper) true)
-                  (dom/classnames :icon-wrapper true))}
-        (if selected? [:span {:class (if new-css-system
-                                       (dom/classnames (css :selected-icon) true)
-                                       (dom/classnames :selected-icon true))}
-                       (if new-css-system
-                         i/tick-refactor
-                         i/tick)]
-            [:span {:class (if new-css-system
-                             (dom/classnames (css :selected-icon) true)
-                             (dom/classnames :selected-icon true))}])
-        [:span {:class (if new-css-system
-                         (dom/classnames (css :shape-icon) true)
-                         (dom/classnames :shape-icon true))} icon]]
-       [:span {:class (if new-css-system
-                        (dom/classnames (css :title) true)
-                        (dom/classnames :title true))} title]]
-      [:li {:class (dom/classnames (css :context-menu-item) new-css-system)
+        {:class (stl/css :icon-wrapper)}
+        (if selected? [:span {:class (stl/css :selected-icon)}
+                       i/tick-refactor]
+            [:span {:class (stl/css :selected-icon)}])
+        [:span {:class (stl/css :shape-icon)} icon]]
+       [:span {:class (stl/css :title)} title]]
+      [:li {:class (stl/css :context-menu-item)
+            :disabled disabled
             :ref set-dom-node
             :on-click on-click
             :on-pointer-enter on-pointer-enter
             :on-pointer-leave on-pointer-leave}
-       [:span {:class (if new-css-system
-                        (dom/classnames (css :title) true)
-                        (dom/classnames :title true))} title]
+       [:span {:class (stl/css :title)} title]
        (when shortcut
-         [:span   {:class (if new-css-system
-                            (dom/classnames (css :shortcut) true)
-                            (dom/classnames :shortcut true))}
-          (if new-css-system
-            (for [sc (scd/split-sc shortcut)]
-              [:span {:class (dom/classnames (css :shortcut-key) true)} sc])
-            (or shortcut ""))])
+         [:span   {:class (stl/css :shortcut)}
+          (for [sc (scd/split-sc shortcut)]
+            [:span {:class (stl/css :shortcut-key)} sc])])
 
        (when (> (count children) 1)
-         (if new-css-system
-           [:span {:class (dom/classnames (css :submenu-icon) true)} i/arrow-refactor]
-           [:span.submenu-icon i/arrow-slide]))
+         [:span {:class (stl/css :submenu-icon)} i/arrow-refactor])
 
        (when (> (count children) 1)
-         [:ul
-          {:class (if new-css-system
-                    (dom/classnames (css :workspace-context-submenu) true)
-                    (dom/classnames :workspace-context-menu true))
-           :ref submenu-ref
-           :style {:display "none" :left 250}
-           :on-context-menu prevent-default}
+         [:ul {:class (stl/css :workspace-context-submenu)
+               :ref submenu-ref
+               :style {:display "none" :left 250}
+               :on-context-menu prevent-default}
           children])])))
+
 (mf/defc menu-separator
   []
-  (let [new-css-system (mf/use-ctx ctx/new-css-system)]
-    [:li {:class (if new-css-system
-                 (dom/classnames (css :separator) true)
-                 (dom/classnames :separator true))}]))
+  [:li {:class (stl/css :separator)}])
 
 (mf/defc context-menu-edit
   [_]
   (let [do-copy           #(st/emit! (dw/copy-selected))
         do-cut            #(st/emit! (dw/copy-selected)
                                      (dw/delete-selected))
-        do-paste          #(st/emit! dw/paste)
+        do-paste          #(st/emit! (dw/paste-from-clipboard))
         do-duplicate      #(st/emit! (dw/duplicate-selected true))]
     [:*
      [:& menu-entry {:title (tr "workspace.shape.menu.copy")
@@ -234,7 +208,7 @@
 (mf/defc context-menu-thumbnail
   [{:keys [shapes]}]
   (let [single?    (= (count shapes) 1)
-        has-frame? (some cph/frame-shape? shapes)
+        has-frame? (some cfh/frame-shape? shapes)
         do-toggle-thumbnail #(st/emit! (dw/toggle-file-thumbnail-selected))]
     (when (and single? has-frame?)
       [:*
@@ -253,9 +227,10 @@
         single?   (= (count shapes) 1)
         do-create-artboard-from-selection #(st/emit! (dwsh/create-artboard-from-selection))
 
-        has-frame? (->> shapes (d/seek cph/frame-shape?))
-        has-group? (->> shapes (d/seek cph/group-shape?))
-        has-bool? (->> shapes (d/seek cph/bool-shape?))
+        ;; components can't be ungrouped
+        has-frame? (->> shapes (d/seek #(and (cfh/frame-shape? %) (not (ctk/instance-head? %)))))
+        has-group? (->> shapes (d/seek #(and (cfh/group-shape? %) (not (ctk/instance-head? %)))))
+        has-bool? (->> shapes (d/seek cfh/bool-shape?))
         has-mask? (->> shapes (d/seek :masked-group))
 
         is-group? (and single? has-group?)
@@ -307,10 +282,10 @@
   (let [multiple?            (> (count shapes) 1)
         single?              (= (count shapes) 1)
 
-        has-group?           (->> shapes (d/seek cph/group-shape?))
-        has-bool?            (->> shapes (d/seek cph/bool-shape?))
-        has-frame?           (->> shapes (d/seek cph/frame-shape?))
-        has-path?            (->> shapes (d/seek cph/path-shape?))
+        has-group?           (->> shapes (d/seek cfh/group-shape?))
+        has-bool?            (->> shapes (d/seek cfh/bool-shape?))
+        has-frame?           (->> shapes (d/seek cfh/frame-shape?))
+        has-path?            (->> shapes (d/seek cfh/path-shape?))
 
         is-group?            (and single? has-group?)
         is-bool?             (and single? has-bool?)
@@ -396,7 +371,7 @@
 
         prototype?      (= options-mode :prototype)
         single?         (= (count shapes) 1)
-        has-frame?      (->> shapes (d/seek cph/frame-shape?))
+        has-frame?      (->> shapes (d/seek cfh/frame-shape?))
         is-frame?       (and single? has-frame?)]
 
     (when (and prototype? is-frame?)
@@ -410,7 +385,7 @@
 (mf/defc context-menu-flex
   [{:keys [shapes]}]
   (let [single?            (= (count shapes) 1)
-        has-frame?         (->> shapes (d/seek cph/frame-shape?))
+        has-frame?         (->> shapes (d/seek cfh/frame-shape?))
         is-flex-container? (and single? has-frame? (= :flex (:layout (first shapes))))
         ids                (->> shapes (map :id))
 
@@ -478,8 +453,8 @@
     [:*
      [:& menu-separator]
      [:& menu-entry {:title (tr "workspace.shape.menu.delete")
-                    :shortcut (sc/get-tooltip :delete)
-                    :on-click do-delete}]]))
+                     :shortcut (sc/get-tooltip :delete)
+                     :on-click do-delete}]]))
 
 (mf/defc shape-context-menu
   {::mf/wrap [mf/memo]}
@@ -531,7 +506,7 @@
 (mf/defc viewport-context-menu
   []
   (let [focus      (mf/deref refs/workspace-focus-selected)
-        do-paste   #(st/emit! dw/paste)
+        do-paste   #(st/emit! (dw/paste-from-clipboard))
         do-hide-ui #(st/emit! (-> (dw/toggle-layout-flag :hide-ui)
                                   (vary-meta assoc ::ev/origin "workspace-context-menu")))
         do-toggle-focus-mode #(st/emit! (dw/toggle-focus-mode))]
@@ -548,13 +523,97 @@
                        :shortcut (sc/get-tooltip :toggle-focus-mode)
                        :on-click do-toggle-focus-mode}])]))
 
+(mf/defc grid-track-context-menu
+  [{:keys [mdata] :as props}]
+  (let [{:keys [type index grid-id]} mdata
+        do-delete-track
+        (mf/use-callback
+         (mf/deps grid-id type index)
+         (fn []
+           (st/emit! (dwsl/remove-layout-track [grid-id] type index))))
+
+        do-add-track-before
+        (mf/use-callback
+         (mf/deps grid-id type index)
+         (fn []
+           (st/emit! (dwsl/add-layout-track [grid-id] type ctl/default-track-value index))))
+
+        do-add-track-after
+        (mf/use-callback
+         (mf/deps grid-id type index)
+         (fn []
+           (st/emit! (dwsl/add-layout-track [grid-id] type ctl/default-track-value (inc index)))))
+
+        do-duplicate-track
+        (mf/use-callback
+         (mf/deps grid-id type index)
+         (fn []
+           (st/emit! (dwsl/duplicate-layout-track [grid-id] type index))))
+
+        do-delete-track-shapes
+        (mf/use-callback
+         (mf/deps grid-id type index)
+         (fn []
+           (st/emit! (dwsl/remove-layout-track [grid-id] type index {:with-shapes? true}))))]
+
+    (if (= type :column)
+      [:*
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.column.duplicate") :on-click do-duplicate-track}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.column.add-before") :on-click do-add-track-before}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.column.add-after") :on-click do-add-track-after}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.column.delete") :on-click do-delete-track}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.column.delete-shapes") :on-click do-delete-track-shapes}]]
+
+      [:*
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.row.duplicate") :on-click do-duplicate-track}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.row.add-before") :on-click do-add-track-before}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.row.add-after") :on-click do-add-track-after}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.row.delete") :on-click do-delete-track}]
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-track.row.delete-shapes") :on-click do-delete-track-shapes}]])))
+
+(mf/defc grid-cells-context-menu
+  [{:keys [mdata] :as props}]
+  (let [{:keys [grid cells]} mdata
+
+        single? (= (count cells) 1)
+
+        can-merge?
+        (mf/use-memo
+         (mf/deps cells)
+         #(ctl/valid-area-cells? cells))
+
+        do-merge-cells
+        (mf/use-callback
+         (mf/deps grid cells)
+         (fn []
+           (st/emit! (dwsl/merge-cells (:id grid) (map :id cells)))))
+
+        do-create-board
+        (mf/use-callback
+         (mf/deps grid cells)
+         (fn []
+           (st/emit! (dwsl/create-cell-board (:id grid) (map :id cells)))))]
+    [:*
+     (when (not single?)
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-cells.merge")
+                       :on-click do-merge-cells
+                       :disabled (not can-merge?)}])
+
+     (when single?
+       [:& menu-entry {:title (tr "workspace.context-menu.grid-cells.area")
+                       :on-click do-merge-cells}])
+
+     [:& menu-entry {:title (tr "workspace.context-menu.grid-cells.create-board")
+                     :on-click do-create-board
+                     :disabled (and (not single?) (not can-merge?))}]]))
+
+
 (mf/defc context-menu
   []
   (let [mdata          (mf/deref menu-ref)
         top            (- (get-in mdata [:position :y]) 20)
         left           (get-in mdata [:position :x])
-        dropdown-ref   (mf/use-ref)
-        new-css-system (mf/use-ctx ctx/new-css-system)]
+        dropdown-ref   (mf/use-ref)]
 
     (mf/use-effect
      (mf/deps mdata)
@@ -572,9 +631,7 @@
     [:& dropdown {:show (boolean mdata)
                   :on-close #(st/emit! dw/hide-context-menu)}
      [:ul
-      {:class (if new-css-system
-                (dom/classnames (css :workspace-context-menu) true)
-                (dom/classnames :workspace-context-menu true))
+      {:class (stl/css :workspace-context-menu)
        :ref dropdown-ref
        :style {:top top :left left}
        :on-context-menu prevent-default}
@@ -582,6 +639,8 @@
       (case (:kind mdata)
         :shape [:& shape-context-menu {:mdata mdata}]
         :page [:& page-item-context-menu {:mdata mdata}]
+        :grid-track [:& grid-track-context-menu {:mdata mdata}]
+        :grid-cells [:& grid-cells-context-menu {:mdata mdata}]
         [:& viewport-context-menu {:mdata mdata}])]]))
 
 

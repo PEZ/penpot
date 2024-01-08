@@ -7,19 +7,25 @@
 (ns app.main.ui.components.code-block
   (:require-macros [app.main.style :as stl])
   (:require
-   ["highlight.js" :as hljs]
    [app.common.data.macros :as dm]
-   [app.main.ui.context :as ctx]
-   [rumext.v2 :as mf]))
+   [cuerdas.core :as str]
+   [promesa.core :as p]
+   [rumext.v2 :as mf]
+   [shadow.lazy :as lazy]))
+
+(def highlight-fn
+  (lazy/loadable app.util.code-highlight/highlight!))
 
 (mf/defc code-block
   {::mf/wrap-props false}
   [{:keys [code type]}]
-  (let [new-css-system (mf/use-ctx ctx/new-css-system)
-        block-ref (mf/use-ref)]
+  (let [block-ref (mf/use-ref)
+        code (str/trim code)]
+
     (mf/with-effect [code type]
       (when-let [node (mf/ref-val block-ref)]
-        (hljs/highlightElement node)))
+        (p/let [highlight-fn (lazy/load highlight-fn)]
+          (highlight-fn node))))
 
-    [:pre {:class (dm/str type " " (stl/css new-css-system :code-display)) :ref block-ref} code]))
+    [:pre {:class (dm/str type " " (stl/css :code-display)) :ref block-ref} code]))
 

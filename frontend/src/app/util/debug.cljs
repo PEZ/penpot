@@ -75,7 +75,9 @@
 
     ;;
     :grid-layout
-    })
+
+    ;; Show an overlay to the grid cells to know its properties
+    :grid-cells})
 
 (defn enable!
   [option]

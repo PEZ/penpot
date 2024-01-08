@@ -12,11 +12,11 @@
    [app.common.logging :as log]
    [app.config :as cf]
    [app.main.store :as st]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [clojure.set :as set]
    [cuerdas.core :as str]
    [okulary.core :as l]
-   [potok.core :as ptk]
+   [potok.v2.core :as ptk]
    [rumext.v2 :as mf]))
 
 (log/set-level! :trace)
@@ -27,14 +27,16 @@
 (defn get-enabled-features
   [state]
   (-> (get state :features/runtime #{})
+      (set/intersection cfeat/no-migration-features)
       (set/union global-enabled-features)))
 
 (defn get-team-enabled-features
   [state]
   (-> global-enabled-features
-      (set/union (get state :features/runtime #{}))
+      (set/union (:features/runtime state #{}))
       (set/intersection cfeat/no-migration-features)
-      (set/union (get state :features/team #{}))))
+      (set/union cfeat/default-enabled-features)
+      (set/union (:features/team state #{}))))
 
 (def features-ref
   (l/derived get-team-enabled-features st/state =))
@@ -97,7 +99,7 @@
      ptk/UpdateEvent
      (update [_ state]
        (let [runtime-features (get state :features/runtime #{})
-             team-features    (into cfeat/default-enabled-features
+             team-features    (into #{}
                                     cfeat/xf-supported-features
                                     team-features)]
          (-> state

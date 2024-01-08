@@ -10,10 +10,10 @@
   align-items: center;
 }
 
-@mixin flexColumn {
+@mixin flexColumn($gap: $s-4) {
   display: flex;
   flex-direction: column;
-  gap: $s-4;
+  gap: #{$gap};
 }
 
 @mixin flexRow {
@@ -49,9 +49,23 @@
   line-height: 1.2;
 }
 
-@mixin titleBigTipography {
+@mixin medTitleTipography {
   font-family: "worksans", sans-serif;
   font-size: $fs-14;
+  font-weight: $fw400;
+  line-height: 1.2;
+}
+
+@mixin bigTitleTipography {
+  font-family: "worksans", sans-serif;
+  font-size: $fs-24;
+  font-weight: $fw400;
+  line-height: 1.2;
+}
+
+@mixin codeTypography {
+  font-family: "robotomono", monospace;
+  font-size: $fs-12;
   font-weight: $fw400;
   line-height: 1.2;
 }
@@ -92,6 +106,15 @@
   padding: calc($s-8 - $s-1) 0 calc($s-8 - $s-1) calc($s-8 - $s-1);
   border-radius: $s-8;
   box-sizing: border-box;
+}
+
+@mixin hiddenElement {
+  cursor: default;
+  pointer-events: none;
+  box-sizing: border-box;
+  color: var(--input-foreground-color-disabled);
+  stroke: var(--input-foreground-color-disabled);
+  background-color: transparent;
 }
 
 @keyframes spin-animation {

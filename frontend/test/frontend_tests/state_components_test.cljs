@@ -13,7 +13,7 @@
    [frontend-tests.helpers.libraries :as thl]
    [frontend-tests.helpers.pages :as thp]
    [linked.core :as lks]
-   [potok.core :as ptk]))
+   [potok.v2.core :as ptk]))
 
 (t/use-fixtures :each
   {:before thp/reset-idmap!})
@@ -341,8 +341,7 @@
                                      ;;   Rect 1              #--> ?
                                      ;;     Rect 1            ---> ?
                                      ;;;
-                                     (let [
-                                           [main1 shape1]
+                                     (let [[main1 shape1]
                                            (thl/resolve-noninstance
                                             new-state
                                             (thp/id :main1))
@@ -380,10 +379,7 @@
                                        (t/is (some? (:objects component3)))
 
                                        (t/is (= (:name saved-main1) "Rect 1"))
-                                       (t/is (= (:name saved-shape2) "Rect 1"))
-
-                                       )))
-          ]
+                                       (t/is (= (:name saved-shape2) "Rect 1")))))]
       (ptk/emit! store
                  (dwl/delete-component {:id (thp/id :component1)})
                  :the/end))))

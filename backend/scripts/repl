@@ -10,7 +10,7 @@ export PENPOT_FLAGS="\
        enable-login-with-google \
        enable-login-with-github \
        enable-login-with-gitlab \
-       disable-backend-worker \
+       enable-backend-worker \
        enable-backend-asserts \
        enable-feature-fdata-pointer-map \
        enable-feature-fdata-objects-map \
@@ -26,7 +26,11 @@ export PENPOT_FLAGS="\
        enable-soft-rpc-rlimit \
        enable-webhooks \
        enable-access-tokens \
-       disable-file-validation";
+       disable-feature-components-v2 \
+       enable-file-validation \
+       enable-file-schema-validation \
+       disable-soft-file-schema-validation \
+       disable-soft-file-validation";
 
 # export PENPOT_DATABASE_URI="postgresql://172.17.0.1:5432/penpot"
 # export PENPOT_DATABASE_USERNAME="penpot"
@@ -41,10 +45,13 @@ export PENPOT_FLAGS="\
 # export PENPOT_AUDIT_LOG_ARCHIVE_URI="http://localhost:6070/api/audit"
 
 # Initialize MINIO config
-mc alias set penpot-s3/ http://minio:9000 minioadmin minioadmin
-mc admin user add penpot-s3 penpot-devenv penpot-devenv
-mc admin policy attach penpot-s3 readwrite --user=penpot-devenv
-mc mb penpot-s3/penpot -p
+mc alias set penpot-s3/ http://minio:9000 minioadmin minioadmin -q
+mc admin user add penpot-s3 penpot-devenv penpot-devenv -q
+mc admin user info penpot-s3 penpot-devenv |grep -F -q "readwrite"
+if [ "$?" = "1" ]; then
+    mc admin policy attach penpot-s3 readwrite --user=penpot-devenv -q
+fi
+mc mb penpot-s3/penpot -p -q
 
 export AWS_ACCESS_KEY_ID=penpot-devenv
 export AWS_SECRET_ACCESS_KEY=penpot-devenv
@@ -68,7 +75,7 @@ export OPTIONS="
 export OPTIONS="$OPTIONS -J--enable-preview"
 
 # Setup HEAP
-export OPTIONS="$OPTIONS -J-Xms50m -J-Xmx1024m"
+# export OPTIONS="$OPTIONS -J-Xms50m -J-Xmx1024m"
 # export OPTIONS="$OPTIONS -J-Xms1100m -J-Xmx1100m -J-XX:+AlwaysPreTouch"
 
 # Increase virtual thread pool size
@@ -81,7 +88,7 @@ export OPTIONS="$OPTIONS -J-Xms50m -J-Xmx1024m"
 # export OPTIONS="$OPTIONS -J-Xint"
 
 # Setup GC
-export OPTIONS="$OPTIONS -J-XX:+UseG1GC"
+# export OPTIONS="$OPTIONS -J-XX:+UseG1GC"
 
 # Setup GC
 # export OPTIONS="$OPTIONS -J-XX:+UseZGC"

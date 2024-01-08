@@ -104,8 +104,7 @@
             :class (stl/css-case :zoom-widget true
                                  :selected open?)
             :title (tr "workspace.header.zoom")}
-      [:span {:class (stl/css :label)} zoom]
-      [:span {:class (stl/css :icon)} i/arrow-refactor]]
+      [:span {:class (stl/css :label)} zoom]]
      [:& dropdown {:show open? :on-close close-dropdown}
       [:ul {:class (stl/css :dropdown)}
        [:li {:class (stl/css :basic-zoom-bar)}
@@ -127,14 +126,14 @@
         (tr "workspace.header.zoom-fit-all")
         [:span {:class (stl/css :shortcuts)}
          (for [sc (scd/split-sc (sc/get-tooltip :fit-all))]
-           [:span {:class (dom/classnames (stl/css :shortcut-key) true)
+           [:span {:class (stl/css :shortcut-key)
                    :key (str "zoom-fit-" sc)} sc])]]
        [:li {:class (stl/css :zoom-option)
              :on-click on-zoom-selected}
         (tr "workspace.header.zoom-selected")
         [:span {:class (stl/css :shortcuts)}
          (for [sc (scd/split-sc (sc/get-tooltip :zoom-selected))]
-           [:span {:class (dom/classnames (stl/css :shortcut-key) true)
+           [:span {:class (stl/css :shortcut-key)
                    :key (str "zoom-selected-" sc)} sc])]]]]]))
 
 ;; --- Header Component
@@ -202,6 +201,11 @@
      [:div {:class (stl/css :users-section)}
       [:& active-sessions]]
 
+     [:& persistence-state-widget]
+
+     [:div {:class (stl/css :separator)}]
+
+
      [:div {:class (stl/css :zoom-section)}
       [:& zoom-widget-workspace
        {:zoom zoom
@@ -211,7 +215,6 @@
         :on-zoom-fit on-zoom-fit
         :on-zoom-selected on-zoom-selected}]]
 
-     [:& persistence-state-widget]
      [:& export-progress-widget]
 
      [:div {:class (stl/css :comments-section)}
@@ -232,6 +235,7 @@
                                :history-button true)
           :on-click toggle-history}
          i/history-refactor]])
+
      [:a {:class (stl/css :viewer-btn)
           :title (tr "workspace.header.viewer" (sc/get-tooltip :open-viewer))
           :on-click nav-to-viewer}

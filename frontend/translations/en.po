@@ -168,10 +168,14 @@ msgid "auth.terms-of-service"
 msgstr "Terms of service"
 
 #: src/app/main/ui/auth/register.cljs
+#, markdown
+msgid "auth.terms-privacy-agreement-md"
+msgstr ""
+"When creating a new account, you agree to our [terms of service](%s) and [privacy policy](%s)."
+
 msgid "auth.terms-privacy-agreement"
 msgstr ""
-"When creating a new account, you agree to our terms of service and privacy "
-"policy."
+"When creating a new account, you agree to ourf terms of service and privacy policy."
 
 #: src/app/main/ui/auth/register.cljs
 msgid "auth.verification-email-sent"
@@ -877,7 +881,12 @@ msgstr "The email «%s» has been reported as spam or permanently bounce."
 msgid "errors.feature-mismatch"
 msgstr ""
 "Looks like you are opening a file that has the feature '%s' enabled but "
-"your penpot frontend does not supports it or has it disabled."
+"the current penpot version does not supports it or has it disabled."
+
+#: src/app/main/errors.cljs
+msgid "errors.version-not-supported"
+msgstr ""
+"File has an incompatible version number"
 
 #: src/app/main/errors.cljs
 msgid "errors.file-feature-mismatch"
@@ -997,6 +1006,13 @@ msgstr "Email or password is incorrect."
 #: src/app/main/ui/settings/password.cljs
 msgid "errors.wrong-old-password"
 msgstr "Old password is incorrect"
+
+msgid "errors.validation"
+msgstr "Validation Error"
+
+msgid "errors.paste-data-validation"
+msgstr "Invalid data in clipboard"
+
 
 #: src/app/main/ui/settings/feedback.cljs
 msgid "feedback.description"
@@ -1620,6 +1636,9 @@ msgstr "Settings"
 
 msgid "labels.share-prototype"
 msgstr "Share prototype"
+
+msgid "labels.share"
+msgstr "Share"
 
 #: src/app/main/ui/dashboard/sidebar.cljs
 msgid "labels.shared-libraries"
@@ -2246,6 +2265,12 @@ msgstr "Create team and send invites"
 
 msgid "onboarding.choice.team-up.create-team-without-inviting"
 msgstr "Create team without inviting"
+
+msgid "onboarding.choice.team-up.create-team-and-invite"
+msgstr "Create team & invite"
+
+msgid "onboarding.choice.team-up.create-team-without-invite"
+msgstr "Create team"
 
 msgid "onboarding.choice.team-up.create-team-and-send-invites-description"
 msgstr "You'll be able to invite later"
@@ -3462,6 +3487,18 @@ msgstr "Zoom to selected"
 msgid "workspace.layout_grid.editor.title"
 msgstr "Editing grid"
 
+msgid "workspace.layout_grid.editor.top-bar.locate"
+msgstr "Locate"
+
+msgid "workspace.layout_grid.editor.top-bar.done"
+msgstr "Done"
+
+msgid "workspace.layout_grid.editor.options.edit-grid"
+msgstr "Edit grid"
+
+msgid "workspace.layout_grid.editor.options.exit"
+msgstr "Exit"
+
 #: src/app/main/ui/workspace/libraries.cljs
 msgid "workspace.libraries.add"
 msgstr "Add"
@@ -3616,9 +3653,12 @@ msgstr "Edit an annotation"
 msgid "workspace.options.component.main"
 msgstr "Main"
 
-
 msgid "workspace.options.component.swap"
 msgstr "Swap component"
+
+msgid "workspace.options.component.swap.empty"
+msgstr "There are no assets in this library yet"
+
 #: src/app/main/ui/workspace/sidebar/options/menus/measures.cljs
 msgid "workspace.options.constraints"
 msgstr "Constraints"
@@ -4993,3 +5033,67 @@ msgstr "Click to close the path"
 #, markdown
 msgid "workspace.top-bar.read-only"
 msgstr "**Inspect mode** (View Only)"
+
+msgid "workspace.top-bar.read-only.done"
+msgstr "Done"
+
+msgid "media.image"
+msgstr "Image"
+
+msgid "media.solid"
+msgstr "Solid"
+
+msgid "media.linear"
+msgstr "Linear"
+
+msgid "media.radial"
+msgstr "Radial"
+
+msgid "media.gradient"
+msgstr "Gradient"
+
+msgid "media.choose-image"
+msgstr "Choose image"
+
+msgid "workspace.options.guides.title"
+msgstr "Guides"
+
+msgid "workspace.context-menu.grid-track.column.duplicate"
+msgstr "Duplicate column"
+
+msgid "workspace.context-menu.grid-track.column.add-before"
+msgstr "Add 1 column to the left"
+
+msgid "workspace.context-menu.grid-track.column.add-after"
+msgstr "Add 1 column to the right"
+
+msgid "workspace.context-menu.grid-track.column.delete"
+msgstr "Delete column"
+
+msgid "workspace.context-menu.grid-track.column.delete-shapes"
+msgstr "Delete column and shapes"
+
+msgid "workspace.context-menu.grid-track.row.duplicate"
+msgstr "Duplicate row"
+
+msgid "workspace.context-menu.grid-track.row.add-before"
+msgstr "Add 1 row above"
+
+msgid "workspace.context-menu.grid-track.row.add-after"
+msgstr "Add 1 row below"
+
+msgid "workspace.context-menu.grid-track.row.delete"
+msgstr "Delete row"
+
+msgid "workspace.context-menu.grid-track.row.delete-shapes"
+msgstr "Delete row and shapes"
+
+msgid "workspace.context-menu.grid-cells.merge"
+msgstr "Merge cells"
+
+msgid "workspace.context-menu.grid-cells.area"
+msgstr "Create area"
+
+msgid "workspace.context-menu.grid-cells.create-board"
+msgstr "Create board"
+

@@ -29,11 +29,13 @@
         params  {::th/type :get-file
                  :id (:id file1)
                  ::rpc/profile-id (:id profile)
-                 :features cfeat/supported-features
-                 }]
+                 :features cfeat/supported-features}]
 
     (binding [cond/*enabled* true]
-      (let [{:keys [error result]} (th/command! params)]
+      (let [{:keys [error result] :as out} (th/command! params)]
+        ;; NOTE: Fails on print because fipps used for pretty print
+        ;; tries to load pointers
+        ;; (th/print-result! out)
         (t/is (nil? error))
         (t/is (map? result))
         (t/is (contains? (meta result) :app.http/headers))
@@ -43,6 +45,5 @@
               {:keys [error result]} (th/command! (assoc params ::cond/key etag))]
           (t/is (nil? error))
           (t/is (fn? result))
-          (t/is (= 304 (-> (result nil) :yetti.response/status))))
-        ))))
+          (t/is (= 304 (-> (result nil) :ring.response/status))))))))
 

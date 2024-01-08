@@ -6,15 +6,15 @@
 
 (ns frontend-tests.setup-test
   (:require
-   [app.common.schema :as sm]
    [app.common.pprint :as pp]
+   [app.common.schema :as sm]
    [cljs.test :as t]))
 
 (.on js/process "uncaughtException" (fn [cause]
                                       (try
                                         (js/console.log "EE" (.-stack cause))
                                         (when-let [data (some-> cause ex-data ::sm/explain)]
-                                          (pp/pprint (sm/humanize-data data)))
+                                          (pp/pprint (sm/humanize-explain data)))
                                         (finally
                                           (js/console.log "EXIT")
                                           (.exit js/process -1)))))
@@ -26,6 +26,6 @@
     (set! (.-exitCode js/process) 1)))
 
 #_(set! *main-cli-fn*
-      #(t/run-tests 'frontend-tests.test-snap-data
-                    'frontend-tests.test-simple-math
-                    'frontend-tests.test-range-tree))
+        #(t/run-tests 'frontend-tests.test-snap-data
+                      'frontend-tests.test-simple-math
+                      'frontend-tests.test-range-tree))

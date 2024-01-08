@@ -10,10 +10,10 @@
    [app.common.data.macros :as dm]
    [app.common.features :as cfeat]
    [app.common.files.defaults :refer [version]]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes :as gsh]
    [app.common.logging :as l]
-   [app.common.pages.helpers :as cph]
    [app.common.schema :as sm]
    [app.common.text :as ct]
    [app.common.types.color :as ctc]
@@ -33,7 +33,7 @@
 ;; SCHEMA
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(sm/def! ::media-object
+(sm/define! ::media-object
   [:map {:title "FileMediaObject"}
    [:id ::sm/uuid]
    [:name :string]
@@ -42,7 +42,7 @@
    [:mtype :string]
    [:path {:optional true} [:maybe :string]]])
 
-(sm/def! ::data
+(sm/define! ::data
   [:map {:title "FileData"}
    [:pages [:vector ::sm/uuid]]
    [:pages-index
@@ -58,11 +58,11 @@
    [:media {:optional true}
     [:map-of {:gen/max 5} ::sm/uuid ::media-object]]])
 
-(def file-data?
-  (sm/pred-fn ::data))
+(def check-file-data!
+  (sm/check-fn ::data))
 
-(def media-object?
-  (sm/pred-fn ::media-object))
+(def check-media-object!
+  (sm/check-fn ::media-object))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; INITIALIZATION
@@ -147,8 +147,8 @@
   (let [components-v2 (dm/get-in file-data [:options :components-v2])]
     (if (and components-v2 (not (:deleted component)))
       (let [component-page (get-component-page file-data component)]
-        (cph/make-container component-page :page))
-      (cph/make-container component :component))))
+        (cfh/make-container component-page :page))
+      (cfh/make-container component :component))))
 
 (defn get-component-root
   "Retrieve the root shape of the component."
@@ -180,7 +180,7 @@
   "Locate the near component in the local file or libraries, and retrieve the shape
    referenced by the instance shape."
   [file page libraries shape & {:keys [include-deleted?] :or {include-deleted? false}}]
-  (let [root-shape     (ctn/get-component-shape (:objects page) shape)
+  (let [root-shape     (ctn/get-copy-root (:objects page) shape)
         component-file (when root-shape
                          (if (= (:component-file root-shape) (:id file))
                            file
@@ -220,7 +220,7 @@
     (if (and components-v2
              (not (:deleted component))) ;; the deleted components have its children in the :objects property
       (let [instance-page (get-component-page file-data component)]
-        (cph/get-children-with-self (:objects instance-page) (:main-instance-id component)))
+        (cfh/get-children-with-self (:objects instance-page) (:main-instance-id component)))
       (vals (:objects component)))))
 
 ;; Return true if the object is a component that exists on the file or its libraries (even a deleted one)
@@ -241,7 +241,7 @@
       (let [component-page (get-component-page file-data component)
             page-objects   (:objects component-page)
             objects        (->> (cons (:main-instance-id component)
-                                      (cph/get-children-ids page-objects (:main-instance-id component)))
+                                      (cfh/get-children-ids page-objects (:main-instance-id component)))
                                 (map #(get page-objects %))
                                 (d/index-by :id))]
         (assoc component :objects objects))
@@ -270,7 +270,7 @@
         (ctkl/update-component component-id #(dissoc % :objects))
         (ctkl/mark-component-undeleted component-id)
         (cond-> update-page?
-                (ctkl/update-component component-id #(assoc % :main-instance-page page-id))))))
+          (ctkl/update-component component-id #(assoc % :main-instance-page page-id))))))
 
 (defn purge-component
   "Remove permanently a component."
@@ -716,7 +716,7 @@
 
             (find-used-components
               [page root]
-              (let [children (cph/get-children-with-self (:objects page) (:id root))]
+              (let [children (cfh/get-children-with-self (:objects page) (:id root))]
                 (reduce (fn [libs-to-show shape]
                           (if (ctk/instance-head? shape)
                             (add-component libs-to-show (:component-file shape) (:component-id shape))

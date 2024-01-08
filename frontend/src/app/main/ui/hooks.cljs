@@ -1,3 +1,4 @@
+
 ;; This Source Code Form is subject to the terms of the Mozilla Public
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -7,7 +8,8 @@
 (ns app.main.ui.hooks
   "A collection of general purpose react hooks."
   (:require
-   [app.common.pages.focus :as cpf]
+   [app.common.files.focus :as cpf]
+   [app.common.math :as mth]
    [app.main.broadcast :as mbc]
    [app.main.data.shortcuts :as dsc]
    [app.main.refs :as refs]
@@ -16,7 +18,9 @@
    [app.util.dom.dnd :as dnd]
    [app.util.storage :refer [storage]]
    [app.util.timers :as ts]
-   [beicon.core :as rx]
+   [app.util.webapi :as wapi]
+   [beicon.v2.core :as rx]
+   [beicon.v2.operators :as rxo]
    [goog.functions :as f]
    [rumext.v2 :as mf]))
 
@@ -32,8 +36,8 @@
   (let [[state reset-state!] (mf/useState #(if (satisfies? IDeref ob) @ob nil))]
     (mf/useEffect
      (fn []
-       (let [sub (rx/subscribe ob #(reset-state! %))]
-         #(rx/cancel! sub)))
+       (let [sub (rx/sub! ob #(reset-state! %))]
+         #(rx/dispose! sub)))
      #js [ob])
     state))
 
@@ -103,7 +107,7 @@
 
         cleanup
         (fn []
-          (some-> (:subscr @state) rx/unsub!)
+          (some-> (:subscr @state) rx/dispose!)
           (swap! state (fn [state]
                          (-> state
                              (cancel-timer)
@@ -168,7 +172,7 @@
             (cleanup)
             (rx/push! global-drag-end nil)
             (when (fn? on-drop)
-              (on-drop side drop-data))))
+              (on-drop side drop-data event))))
 
         on-drag-end
         (fn [event]
@@ -214,7 +218,7 @@
    (mf/use-effect
     deps
     (fn []
-      (let [sub (->> stream (rx/subs on-subscribe))]
+      (let [sub (->> stream (rx/subs! on-subscribe))]
         #(rx/dispose! sub))))))
 
 ;; https://reactjs.org/docs/hooks-faq.html#how-to-get-the-previous-props-or-state
@@ -336,8 +340,8 @@
 
                                     intersecting?)))
 
-                        (rx/dedupe))
-            subs (rx/subscribe stream update-state!)]
+                        (rx/pipe (rxo/distinct-contiguous)))
+            subs (rx/sub! stream update-state!)]
         (.observe ^js @intersection-observer node)
         (fn []
           (.unobserve ^js @intersection-observer node)
@@ -345,3 +349,49 @@
 
     state))
 
+(defn use-dynamic-grid-item-width
+  ([] (use-dynamic-grid-item-width nil))
+  ([itemsize]
+   (let [width*   (mf/use-state nil)
+         width    (deref width*)
+
+         rowref   (mf/use-ref)
+
+         itemsize (cond
+                    (some? itemsize) itemsize
+                    (>= width 1030)  280
+                    :else            230)
+
+         ratio    (if (some? width) (/ width itemsize) 0)
+         nitems   (mth/floor ratio)
+         limit    (mth/min 10 nitems)
+         limit    (mth/max 1 limit)
+
+         th-size (when width
+                   (mth/floor (- (/ (- width 32 (* (dec limit) 24)) limit) 12)))
+
+         ;; Need an even value
+         th-size (if (odd? (int th-size)) (- th-size 1) th-size)]
+
+     (mf/with-effect
+       [th-size]
+       (when th-size
+         (let [node (mf/ref-val rowref)]
+           (.setProperty (.-style node) "--th-width" (str th-size "px"))
+           (.setProperty (.-style node) "--th-height" (str (mth/ceil (* th-size (/ 2 3))) "px")))))
+
+     (mf/with-effect []
+       (let [node (mf/ref-val rowref)
+             mnt? (volatile! true)
+             sub  (->> (wapi/observe-resize node)
+                       (rx/subs! (fn [entries]
+                                   (let [row       (first entries)
+                                         row-rect  (.-contentRect ^js row)
+                                         row-width (.-width ^js row-rect)]
+                                     (when @mnt?
+                                       (reset! width* row-width))))))]
+         (fn []
+           (vreset! mnt? false)
+           (rx/dispose! sub))))
+
+     [rowref limit])))

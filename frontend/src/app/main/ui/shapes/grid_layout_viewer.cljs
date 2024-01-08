@@ -8,14 +8,13 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.matrix :as gmt]
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes :as gsh]
    [app.common.geom.shapes.grid-layout :as gsg]
    [app.common.geom.shapes.points :as gpo]
-   [app.common.pages.helpers :as cph]
    [app.common.types.shape.layout :as ctl]
-   [app.main.refs :as refs]
    [rumext.v2 :as mf]))
 
 (mf/defc grid-cell-area-label
@@ -85,11 +84,10 @@
   {::mf/wrap-props false}
   [props]
   (let [shape (unchecked-get props "shape")
-        objects (mf/deref refs/workspace-page-objects)
+        objects (unchecked-get props "objects")
         bounds (d/lazy-map (keys objects) #(gsh/shape->points (get objects %)))
-
         children
-        (->> (cph/get-immediate-children objects (:id shape))
+        (->> (cfh/get-immediate-children objects (:id shape))
              (remove :hidden)
              (map #(vector (gpo/parent-coords-bounds (:points %) (:points shape)) %)))
 

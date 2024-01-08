@@ -21,22 +21,24 @@
    [app.util.i18n :as i18n]
    [app.util.router :as rt]
    [app.util.storage :refer [storage]]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 ;; --- SCHEMAS
 
-(def schema:profile
-  [:map {:title "Profile"}
-   [:id ::sm/uuid]
-   [:created-at {:optional true} :any]
-   [:fullname {:optional true} :string]
-   [:email {:optional true} :string]
-   [:lang {:optional true} :string]
-   [:theme {:optional true} :string]])
+(def ^:private
+  schema:profile
+  (sm/define
+    [:map {:title "Profile"}
+     [:id ::sm/uuid]
+     [:created-at {:optional true} :any]
+     [:fullname {:optional true} :string]
+     [:email {:optional true} :string]
+     [:lang {:optional true} :string]
+     [:theme {:optional true} :string]]))
 
-(def profile?
-  (sm/pred-fn schema:profile))
+(def check-profile!
+  (sm/check-fn schema:profile))
 
 ;; --- HELPERS
 
@@ -129,8 +131,8 @@
         (when profile
           (swap! storage assoc :profile profile)
           (i18n/set-locale! (:lang profile))
-        (when (not= previous-email email)
-          (swap! storage dissoc ::current-team-id)))))))
+          (when (not= previous-email email)
+            (swap! storage dissoc ::current-team-id)))))))
 
 (defn fetch-profile
   []
@@ -289,7 +291,10 @@
 
 (defn update-profile
   [data]
-  (dm/assert! (profile? data))
+  (dm/assert!
+   "expected valid profile data"
+   (check-profile! data))
+
   (ptk/reify ::update-profile
     ptk/WatchEvent
     (watch [_ _ stream]
@@ -308,6 +313,25 @@
                  (rx/of (profile-fetched data)))))
              (rx/catch on-error))))))
 
+;; --- Toggle Theme
+
+(defn toggle-theme
+  []
+  (ptk/reify ::toggle-theme
+    ptk/UpdateEvent
+    (update [_ state]
+      (update-in state [:profile :theme]
+                 (fn [theme]
+                   (cond
+                     (= theme "default")
+                     "light"
+
+                     :else
+                     "default"))))
+
+    ptk/WatchEvent
+    (watch [_ state _]
+      (rx/of (update-profile (:profile state))))))
 
 
 ;; --- Request Email Change
@@ -343,9 +367,13 @@
    ;; Social registered users don't have old-password
    [:password-old {:optional true} [:maybe :string]]])
 
+
 (defn update-password
   [data]
-  (dm/assert! (sm/valid? schema:update-password data))
+  (dm/assert!
+   "expected valid parameters"
+   (sm/check! schema:update-password data))
+
   (ptk/reify ::update-password
     ptk/WatchEvent
     (watch [_ _ _]
@@ -401,7 +429,6 @@
         (->> (rp/cmd! :update-profile-props {:props props})
              (rx/map (constantly (fetch-profile))))))))
 
-
 ;; --- Update Photo
 
 (defn update-photo
@@ -426,7 +453,7 @@
              (rx/map di/validate-file)
              (rx/map prepare)
              (rx/mapcat #(rp/cmd! :update-profile-photo %))
-             (rx/do on-success)
+             (rx/tap on-success)
              (rx/map (constantly (fetch-profile)))
              (rx/catch on-error))))))
 
@@ -476,14 +503,19 @@
 
 ;; --- EVENT: request-profile-recovery
 
-(def schema:request-profile-recovery
-  [:map {:closed true}
-   [:email ::sm/email]])
+(def ^:private
+  schema:request-profile-recovery
+  (sm/define
+    [:map {:title "request-profile-recovery" :closed true}
+     [:email ::sm/email]]))
 
-;; FIXME: check if we can use schema for proper filter
 (defn request-profile-recovery
   [data]
-  (dm/assert! (sm/valid? schema:request-profile-recovery data))
+
+  (dm/assert!
+   "expected valid parameters"
+   (sm/check! schema:request-profile-recovery data))
+
   (ptk/reify ::request-profile-recovery
     ptk/WatchEvent
     (watch [_ _ _]
@@ -497,14 +529,19 @@
 
 ;; --- EVENT: recover-profile (Password)
 
-(def schema:recover-profile
-  [:map {:closed true}
-   [:password :string]
-   [:token :string]])
+(def ^:private
+  schema:recover-profile
+  (sm/define
+    [:map {:title "recover-profile" :closed true}
+     [:password :string]
+     [:token :string]]))
 
 (defn recover-profile
   [data]
-  (dm/assert! (sm/valid? schema:recover-profile data))
+  (dm/assert!
+   "expected valid arguments"
+   (sm/check! schema:recover-profile data))
+
   (ptk/reify ::recover-profile
     ptk/WatchEvent
     (watch [_ _ _]

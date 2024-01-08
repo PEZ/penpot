@@ -10,6 +10,7 @@
    [app.common.data.macros :as dm]
    [app.common.features :as cfeat]
    [app.common.files.helpers :as cfh]
+   [app.common.logging :as log]
    [app.common.schema :as sm]
    [app.common.uri :as u]
    [app.common.uuid :as uuid]
@@ -25,12 +26,15 @@
    [app.util.dom :as dom]
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.router :as rt]
+   [app.util.sse :as sse]
    [app.util.time :as dt]
    [app.util.timers :as tm]
    [app.util.webapi :as wapi]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [clojure.set :as set]
-   [potok.core :as ptk]))
+   [potok.v2.core :as ptk]))
+
+(log/set-level! :warn)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Initialization
@@ -40,7 +44,7 @@
 (declare fetch-team-members)
 
 (defn initialize
-  [{:keys [id] :as params}]
+  [{:keys [id]}]
   (dm/assert! (uuid? id))
   (ptk/reify ::initialize
     ptk/UpdateEvent
@@ -256,13 +260,14 @@
             (update :dashboard-files d/merge files))))))
 
 (defn fetch-shared-files
-  []
-  (ptk/reify ::fetch-shared-files
-    ptk/WatchEvent
-    (watch [_ state _]
-      (let [team-id (:current-team-id state)]
-        (->> (rp/cmd! :get-team-shared-files {:team-id team-id})
-             (rx/map shared-files-fetched))))))
+  ([] (fetch-shared-files nil))
+  ([team-id]
+   (ptk/reify ::fetch-shared-files
+     ptk/WatchEvent
+     (watch [_ state _]
+       (let [team-id (or team-id (:current-team-id state))]
+         (->> (rp/cmd! :get-team-shared-files {:team-id team-id})
+              (rx/map shared-files-fetched)))))))
 
 ;; --- EVENT: recent-files
 
@@ -301,8 +306,8 @@
   (ptk/reify ::fetch-builtin-templates
     ptk/WatchEvent
     (watch [_ _ _]
-        (->> (rp/cmd! :get-builtin-templates)
-             (rx/map builtin-templates-fetched)))))
+      (->> (rp/cmd! :get-builtin-templates)
+           (rx/map builtin-templates-fetched)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Selection
@@ -315,7 +320,7 @@
     (update [_ state]
       (update state :dashboard-local
               assoc :selected-files #{}
-                    :selected-project nil))))
+              :selected-project nil))))
 
 (defn toggle-file-select
   [{:keys [id project-id] :as file}]
@@ -372,10 +377,10 @@
              :or {on-success identity
                   on-error rx/throw}} (meta params)
             features (features/get-enabled-features state)]
-            params   {:name name
-                      :emails #{emails}
-                      :role role
-                      :features features}
+        params   {:name name
+                  :emails #{emails}
+                  :role role
+                  :features features}
         (->> (rp/cmd! :create-team-with-invitations params)
              (rx/tap on-success)
              (rx/map team-created)
@@ -414,7 +419,7 @@
              (rx/map di/validate-file)
              (rx/map prepare)
              (rx/mapcat #(rp/cmd! :update-team-photo %))
-             (rx/do on-success)
+             (rx/tap on-success)
              (rx/map du/fetch-teams)
              (rx/catch on-error))))))
 
@@ -468,7 +473,10 @@
   [{:keys [emails role team-id resend?] :as params}]
   (dm/assert! (keyword? role))
   (dm/assert! (uuid? team-id))
-  (dm/assert! (sm/set-of-emails? emails))
+
+  (dm/assert!
+   "expected a valid set of emails"
+   (sm/check-set-of-emails! emails))
 
   (ptk/reify ::invite-team-members
     IDeref
@@ -487,7 +495,10 @@
 
 (defn copy-invitation-link
   [{:keys [email team-id] :as params}]
-  (dm/assert! (sm/email? email))
+  (dm/assert!
+   "expected a valid email"
+   (sm/check-email! email))
+
   (dm/assert! (uuid? team-id))
 
   (ptk/reify ::copy-invitation-link
@@ -515,7 +526,10 @@
 
 (defn update-team-invitation-role
   [{:keys [email team-id role] :as params}]
-  (dm/assert! (sm/email? email))
+  (dm/assert!
+   "expected a valid email"
+   (sm/check-email! email))
+
   (dm/assert! (uuid? team-id))
   (dm/assert! (keyword? role)) ;; FIXME validate role
 
@@ -534,7 +548,7 @@
 
 (defn delete-team-invitation
   [{:keys [email team-id] :as params}]
-  (dm/assert! (sm/email? email))
+  (dm/assert! (sm/check-email! email))
   (dm/assert! (uuid? team-id))
   (ptk/reify ::delete-team-invitation
     ptk/WatchEvent
@@ -803,7 +817,7 @@
           (d/update-in-when [:dashboard-files id :is-shared] (constantly is-shared))
           (d/update-in-when [:dashboard-recent-files id :is-shared] (constantly is-shared))
           (cond->
-            (not is-shared)
+           (not is-shared)
             (d/update-when :dashboard-shared-files dissoc id))))
 
     ptk/WatchEvent
@@ -817,9 +831,15 @@
   (ptk/reify ::set-file-thumbnail
     ptk/UpdateEvent
     (update [_ state]
-      (-> state
-          (d/update-in-when [:dashboard-files file-id] assoc :thumbnail-uri thumbnail-uri)
-          (d/update-in-when [:dashboard-recent-files file-id] assoc :thumbnail-uri thumbnail-uri)))))
+      (letfn [(update-search-files [files]
+                (->> files
+                     (mapv #(cond-> %
+                              (= file-id (:id %))
+                              (assoc :thumbnail-uri thumbnail-uri)))))]
+        (-> state
+            (d/update-in-when [:dashboard-files file-id] assoc :thumbnail-uri thumbnail-uri)
+            (d/update-in-when [:dashboard-recent-files file-id] assoc :thumbnail-uri thumbnail-uri)
+            (d/update-when :dashboard-search-result update-search-files))))))
 
 ;; --- EVENT: create-file
 
@@ -891,8 +911,11 @@
 
 (defn move-files
   [{:keys [ids project-id] :as params}]
-  (dm/assert! (sm/set-of-uuid? ids))
   (dm/assert! (uuid? project-id))
+
+  (dm/assert!
+   "expected a valid set of uuids"
+   (sm/check-set-of-uuid! ids))
 
   (ptk/reify ::move-files
     IDeref
@@ -920,8 +943,8 @@
              (rx/tap on-success)
              (rx/catch on-error))))))
 
-
 ;; --- EVENT: clone-template
+
 (defn clone-template
   [{:keys [template-id project-id] :as params}]
   (dm/assert! (uuid? project-id))
@@ -936,7 +959,17 @@
       (let [{:keys [on-success on-error]
              :or {on-success identity
                   on-error rx/throw}} (meta params)]
-        (->> (rp/cmd! :clone-template {:project-id project-id :template-id template-id})
+        (->> (rp/cmd! ::sse/clone-template {:project-id project-id
+                                            :template-id template-id})
+             (rx/tap (fn [event]
+                       (let [payload (sse/get-payload event)
+                             type    (sse/get-type event)]
+                         (if (= type "event")
+                           (log/dbg :hint "clone-template: progress" :section (:section payload) :name (:name payload))
+                           (log/dbg :hint "clone-template: end")))))
+
+             (rx/filter sse/end-of-stream?)
+             (rx/map sse/get-payload)
              (rx/tap on-success)
              (rx/catch on-error))))))
 
@@ -977,9 +1010,9 @@
        (let [team-id (:current-team-id state)]
          (if (empty? term)
            (do
-              (dom/focus! (dom/get-element "search-input"))
-              (rx/of (rt/nav :dashboard-search
-                              {:team-id team-id})))
+             (dom/focus! (dom/get-element "search-input"))
+             (rx/of (rt/nav :dashboard-search
+                            {:team-id team-id})))
            (rx/of (rt/nav :dashboard-search
                           {:team-id team-id}
                           {:search-term term})))))

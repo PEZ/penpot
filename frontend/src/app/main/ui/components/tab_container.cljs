@@ -9,7 +9,6 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
-   [app.main.ui.context :as ctx]
    [app.main.ui.icons :as i]
    [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
@@ -19,9 +18,8 @@
 (mf/defc tab-element
   {::mf/wrap-props false}
   [props]
-  (let [children (unchecked-get props "children")
-        new-css-system (mf/use-ctx ctx/new-css-system)]
-    [:div {:class (stl/css new-css-system :tab-element)}
+  (let [children (unchecked-get props "children")]
+    [:div {:class (stl/css :tab-element)}
      children]))
 
 (mf/defc tab-container
@@ -52,7 +50,7 @@
              (when (fn? on-change) (on-change id)))))]
 
     [:div {:class (stl/css :tab-container)}
-     [:div {:class (dm/str class " "(stl/css :tab-container-tabs))}
+     [:div {:class (dm/str class " " (stl/css :tab-container-tabs))}
       (when collapsable?
         [:button
          {:on-click handle-collapse
@@ -69,7 +67,7 @@
              :data-id (d/name id)
              :on-click select-fn
              :class  (stl/css-case :tab-container-tab-title true
-                                     :current (= selected id))}
+                                   :current (= selected id))}
             title]))]]
-     [:div {:class (dm/str content-class " " (stl/css  :tab-container-content ))}
+     [:div {:class (dm/str content-class " " (stl/css  :tab-container-content))}
       (d/seek #(= selected (-> % .-props .-id)) children)]]))

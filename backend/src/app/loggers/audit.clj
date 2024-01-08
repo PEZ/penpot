@@ -33,7 +33,7 @@
    [integrant.core :as ig]
    [lambdaisland.uri :as u]
    [promesa.exec :as px]
-   [yetti.request :as yrq]))
+   [ring.request :as rreq]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; HELPERS
@@ -41,9 +41,9 @@
 
 (defn parse-client-ip
   [request]
-  (or (some-> (yrq/get-header request "x-forwarded-for") (str/split ",") first)
-      (yrq/get-header request "x-real-ip")
-      (some-> (yrq/remote-addr request) str)))
+  (or (some-> (rreq/get-header request "x-forwarded-for") (str/split ",") first)
+      (rreq/get-header request "x-real-ip")
+      (some-> (rreq/remote-addr request) str)))
 
 (defn extract-utm-params
   "Extracts additional data from params and namespace them under
@@ -133,7 +133,7 @@
   [_ {:keys [::db/pool] :as cfg}]
   (cond
     (db/read-only? pool)
-    (l/warn :hint "audit: disabled (db is read-only)")
+    (l/warn :hint "audit disabled (db is read-only)")
 
     :else
     cfg))
@@ -187,8 +187,7 @@
          false)}))
 
 (defn- handle-event!
-  [conn-or-pool event]
-  (us/verify! ::event event)
+  [cfg event]
   (let [params {:id (uuid/next)
                 :name (::name event)
                 :type (::type event)
@@ -201,19 +200,22 @@
       ;; NOTE: this operation may cause primary key conflicts on inserts
       ;; because of the timestamp precission (two concurrent requests), in
       ;; this case we just retry the operation.
-      (rtry/with-retry {::rtry/when rtry/conflict-exception?
-                        ::rtry/max-retries 6
-                        ::rtry/label "persist-audit-log"
-                        ::db/conn (dm/check db/connection? conn-or-pool)}
-        (let [now (dt/now)]
-          (db/insert! conn-or-pool :audit-log
-                      (-> params
-                          (update :props db/tjson)
-                          (update :context db/tjson)
-                          (update :ip-addr db/inet)
-                          (assoc :created-at now)
-                          (assoc :tracked-at now)
-                          (assoc :source "backend"))))))
+      (let [cfg    (-> cfg
+                       (assoc ::rtry/when rtry/conflict-exception?)
+                       (assoc ::rtry/max-retries 6)
+                       (assoc ::rtry/label "persist-audit-log"))
+            params (-> params
+                       (update :props db/tjson)
+                       (update :context db/tjson)
+                       (update :ip-addr db/inet)
+                       (assoc :source "backend"))]
+
+        (rtry/invoke cfg (fn [cfg]
+                           (let [tnow   (dt/now)
+                                 params (-> params
+                                            (assoc :created-at tnow)
+                                            (assoc :tracked-at tnow))]
+                             (db/insert! cfg :audit-log params))))))
 
     (when (and (contains? cf/flags :webhooks)
                (::webhooks/event? event))
@@ -226,7 +228,7 @@
                             :else               label)
             dedupe?       (boolean (and batch-key batch-timeout))]
 
-        (wrk/submit! ::wrk/conn conn-or-pool
+        (wrk/submit! ::wrk/conn (::db/conn cfg)
                      ::wrk/task :process-webhook-event
                      ::wrk/queue :webhooks
                      ::wrk/max-retries 0
@@ -243,12 +245,12 @@
 (defn submit!
   "Submit audit event to the collector."
   [cfg params]
-  (let [conn (or (::db/conn cfg) (::db/pool cfg))]
-    (us/assert! ::db/pool-or-conn conn)
-    (try
-      (handle-event! conn (d/without-nils params))
-      (catch Throwable cause
-        (l/error :hint "audit: unexpected error processing event" :cause cause)))))
+  (try
+    (let [event (d/without-nils params)]
+      (us/verify! ::event event)
+      (db/tx-run! cfg handle-event! event))
+    (catch Throwable cause
+      (l/error :hint "unexpected error processing event" :cause cause))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TASK: ARCHIVE

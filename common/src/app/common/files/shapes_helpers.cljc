@@ -8,19 +8,15 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.changes-builder :as pcb]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.changes-builder :as pcb]
-   [app.common.pages.helpers :as cph]
-   [app.common.schema :as sm]
    [app.common.types.shape :as cts]
    [app.common.types.shape.layout :as ctl]
    [app.common.uuid :as uuid]))
 
-(def valid-shape-map?
-  (sm/pred-fn ::cts/shape))
-
 (defn prepare-add-shape
-  [changes shape objects _selected]
+  [changes shape objects]
   (let [index   (:index (meta shape))
         id      (:id shape)
 
@@ -38,12 +34,12 @@
                     (cond-> (some? cell)
                       (pcb/update-shapes [(:parent-id shape)] #(ctl/push-into-cell % [id] row column)))
                     (cond-> (ctl/grid-layout? objects (:parent-id shape))
-                      (pcb/update-shapes [(:parent-id shape)] ctl/assign-cells)))]
+                      (pcb/update-shapes [(:parent-id shape)] ctl/assign-cells {:with-objects? true})))]
     [shape changes]))
 
 (defn prepare-move-shapes-into-frame
   [changes frame-id shapes objects]
-  (let [ordered-indexes (cph/order-by-indexed-shapes objects shapes)
+  (let [ordered-indexes (cfh/order-by-indexed-shapes objects shapes)
         parent-id (get-in objects [frame-id :parent-id])
         ordered-indexes (->> ordered-indexes (remove #(= % parent-id)))
         to-move-shapes (map (d/getf objects) ordered-indexes)]
@@ -51,61 +47,123 @@
       (-> changes
           (cond-> (not (ctl/any-layout? objects frame-id))
             (pcb/update-shapes ordered-indexes ctl/remove-layout-item-data))
-          (pcb/update-shapes ordered-indexes #(cond-> % (cph/frame-shape? %) (assoc :hide-in-viewer true)))
+          (pcb/update-shapes ordered-indexes #(cond-> % (cfh/frame-shape? %) (assoc :hide-in-viewer true)))
           (pcb/change-parent frame-id to-move-shapes 0)
           (cond-> (ctl/grid-layout? objects frame-id)
-            (pcb/update-shapes [frame-id] ctl/assign-cells))
-          (pcb/reorder-grid-children [frame-id]))
+            (-> (pcb/update-shapes [frame-id] ctl/assign-cells {:with-objects? true})
+                (pcb/reorder-grid-children [frame-id]))))
       changes)))
 
 (defn prepare-create-artboard-from-selection
-  [changes id parent-id objects selected index frame-name without-fill?]
-  (let [selected-objs (map #(get objects %) selected)
-        new-index (or index
-                      (cph/get-index-replacement selected objects))]
-    (when (d/not-empty? selected)
-      (let [srect       (gsh/shapes->rect selected-objs)
-            selected-id (first selected)
+  ([changes id parent-id objects selected index frame-name without-fill?]
+   (prepare-create-artboard-from-selection
+    changes id parent-id objects selected index frame-name without-fill? nil))
 
-            frame-id    (dm/get-in objects [selected-id :frame-id])
-            parent-id   (or parent-id (dm/get-in objects [selected-id :parent-id]))
+  ([changes id parent-id objects selected index frame-name without-fill? target-cell-id]
+   (let [selected-objs (map #(get objects %) selected)
+         new-index (or index
+                       (cfh/get-index-replacement selected objects))]
+     (when (d/not-empty? selected)
+       (let [srect       (gsh/shapes->rect selected-objs)
+             selected-id (first selected)
 
-            attrs       {:type :frame
-                         :x (:x srect)
-                         :y (:y srect)
-                         :width (:width srect)
-                         :height (:height srect)}
+             frame-id    (dm/get-in objects [selected-id :frame-id])
+             parent-id   (or parent-id (dm/get-in objects [selected-id :parent-id]))
+             base-parent (get objects parent-id)
 
-            shape     (cts/setup-shape
-                       (cond-> attrs
-                         (some? id)
-                         (assoc :id id)
+             attrs       {:type :frame
+                          :x (:x srect)
+                          :y (:y srect)
+                          :width (:width srect)
+                          :height (:height srect)}
 
-                         (some? frame-name)
-                         (assoc :name frame-name)
+             shape     (cts/setup-shape
+                        (cond-> attrs
+                          (some? id)
+                          (assoc :id id)
 
-                         :always
-                         (assoc :frame-id frame-id
-                                :parent-id parent-id
-                                :shapes (into [] selected))
+                          (some? frame-name)
+                          (assoc :name frame-name)
 
-                         :always
-                         (with-meta {:index new-index})
+                          :always
+                          (assoc :frame-id frame-id
+                                 :parent-id parent-id
+                                 :shapes (into [] selected))
 
-                         (or (not= frame-id uuid/zero) without-fill?)
-                         (assoc :fills [] :hide-in-viewer true)))
+                          :always
+                          (with-meta {:index new-index})
 
-            [shape changes]
-            (prepare-add-shape changes shape objects selected)
+                          (or (not= frame-id uuid/zero) without-fill?)
+                          (assoc :fills [] :hide-in-viewer true)))
 
-            changes
-            (prepare-move-shapes-into-frame changes (:id shape) selected objects)
+             [shape changes]
+             (prepare-add-shape changes shape objects)
 
-            changes
-            (cond-> changes
-              (ctl/grid-layout? objects (:parent-id shape))
-              (-> (pcb/update-shapes [(:parent-id shape)] ctl/assign-cells)
-                  (pcb/reorder-grid-children [(:parent-id shape)])))]
+             changes
+             (prepare-move-shapes-into-frame changes (:id shape) selected objects)
 
-        [shape changes]))))
+             changes
+             (cond-> changes
+               (ctl/grid-layout? objects (:parent-id shape))
+               (-> (cond-> (some? target-cell-id)
+                     (pcb/update-shapes
+                      [(:parent-id shape)]
+                      (fn [parent]
+                        (-> parent
+                            (assoc :layout-grid-cells (:layout-grid-cells base-parent))
+                            (assoc-in [:layout-grid-cells target-cell-id :shapes] [id])
+                            (assoc :position :auto)))))
+                   (pcb/update-shapes [(:parent-id shape)] ctl/assign-cells {:with-objects? true})
+                   (pcb/reorder-grid-children [(:parent-id shape)])))]
 
+         [shape changes])))))
+
+
+(defn prepare-create-empty-artboard
+  [changes frame-id parent-id objects index frame-name without-fill? target-cell-id]
+
+  (let [base-parent (get objects parent-id)
+
+        attrs       {:type :frame
+                     :x 0
+                     :y 0
+                     :width 0.01
+                     :height 0.01}
+
+        shape     (cts/setup-shape
+                   (cond-> attrs
+                     (some? frame-id)
+                     (assoc :id frame-id)
+
+                     (some? frame-name)
+                     (assoc :name frame-name)
+
+                     :always
+                     (assoc :frame-id frame-id
+                            :parent-id parent-id
+                            :shapes [])
+
+                     :always
+                     (with-meta {:index index})
+
+                     (or (not= frame-id uuid/zero) without-fill?)
+                     (assoc :fills [] :hide-in-viewer true)))
+
+        [shape changes]
+        (prepare-add-shape changes shape objects)
+
+        changes
+        (cond-> changes
+          (ctl/grid-layout? objects (:parent-id shape))
+          (-> (cond-> (some? target-cell-id)
+                (pcb/update-shapes
+                 [(:parent-id shape)]
+                 (fn [parent]
+                   (-> parent
+                       (assoc :layout-grid-cells (:layout-grid-cells base-parent))
+                       (assoc-in [:layout-grid-cells target-cell-id :shapes] [frame-id])
+                       (assoc :position :auto)))))
+              (pcb/update-shapes [(:parent-id shape)] ctl/assign-cells {:with-objects? true})
+              (pcb/reorder-grid-children [(:parent-id shape)])))]
+
+    [shape changes]))

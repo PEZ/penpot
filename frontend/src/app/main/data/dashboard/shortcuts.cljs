@@ -8,6 +8,7 @@
   (:require
    [app.main.data.dashboard :as dd]
    [app.main.data.shortcuts :as ds]
+   [app.main.data.users :as du]
    [app.main.store :as st]))
 
 (def shortcuts
@@ -25,11 +26,15 @@
                         :command "g l"
                         :subsections [:navigation-dashboard]
                         :fn #(st/emit! (dd/go-to-libs))}
-   
+
    :create-new-project {:tooltip "+"
                         :command "+"
                         :subsections [:general-dashboard]
-                        :fn #(st/emit! (dd/create-element))}})
+                        :fn #(st/emit! (dd/create-element))}
+
+   :toggle-light-dark    {:tooltip (ds/meta (ds/alt "Q"))
+                          :command (ds/c-mod "alt+q")
+                          :fn #(st/emit! (du/toggle-theme))}})
 
 (defn get-tooltip [shortcut]
   (assert (contains? shortcuts shortcut) (str shortcut))

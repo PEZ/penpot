@@ -173,10 +173,14 @@ msgid "auth.terms-of-service"
 msgstr "Términos de servicio"
 
 #: src/app/main/ui/auth/register.cljs
+#, markdown
+msgid "auth.terms-privacy-agreement-md"
+msgstr ""
+"Al crear una nueva cuenta, aceptas nuestros [términos de servicio](%s) y [política de privacidad](%s)."
+
 msgid "auth.terms-privacy-agreement"
 msgstr ""
-"Al crear una nueva cuenta, aceptas nuestros términos de servicio y política "
-"de privacidad."
+"Al crear una nueva cuenta, aceptas nuestros [términos de servicio](%s) y [política de privacidad](%s)."
 
 #: src/app/main/ui/auth/register.cljs
 msgid "auth.verification-email-sent"
@@ -1669,6 +1673,9 @@ msgstr "Configuración"
 msgid "labels.share-prototype"
 msgstr "Compartir prototipo"
 
+msgid "labels.share"
+msgstr "Compartir"
+
 #: src/app/main/ui/dashboard/sidebar.cljs
 msgid "labels.shared-libraries"
 msgstr "Bibliotecas"
@@ -2299,6 +2306,12 @@ msgstr "Crear equipo y enviar invitaciones"
 
 msgid "onboarding.choice.team-up.create-team-without-inviting"
 msgstr "Crear equipo sin invitar"
+
+msgid "onboarding.choice.team-up.create-team-and-invite"
+msgstr "Crear equipo e invitar"
+
+msgid "onboarding.choice.team-up.create-team-without-invite"
+msgstr "Crear equipo"
 
 msgid "onboarding.choice.team-up.create-team-and-send-invites-description"
 msgstr "Podrás enviar invitaciones después"
@@ -3536,6 +3549,18 @@ msgstr "Zoom a selección"
 msgid "workspace.layout_grid.editor.title"
 msgstr "Editando rejilla"
 
+msgid "workspace.layout_grid.editor.top-bar.locate"
+msgstr "Mostrar"
+
+msgid "workspace.layout_grid.editor.top-bar.done"
+msgstr "Hecho"
+
+msgid "workspace.layout_grid.editor.options.edit-grid"
+msgstr "Editar rejilla"
+
+msgid "workspace.layout_grid.editor.options.exit"
+msgstr "Salir"
+
 #: src/app/main/ui/workspace/libraries.cljs
 msgid "workspace.libraries.add"
 msgstr "Añadir"
@@ -3688,9 +3713,12 @@ msgstr "Editar una nota"
 msgid "workspace.options.component.main"
 msgstr "Principal"
 
-
 msgid "workspace.options.component.swap"
 msgstr "Intercambiar componente"
+
+msgid "workspace.options.component.swap.empty"
+msgstr "Aún no hay recursos en esta biblioteca"
+
 #: src/app/main/ui/workspace/sidebar/options/menus/measures.cljs
 msgid "workspace.options.constraints"
 msgstr "Restricciones"
@@ -5094,3 +5122,67 @@ msgstr "Pulsar para cerrar la ruta"
 #, markdown
 msgid "workspace.top-bar.read-only"
 msgstr "**Modo inspección** (View only)"
+
+msgid "workspace.top-bar.read-only.done"
+msgstr "Hecho"
+
+msgid "media.image"
+msgstr "Imagen"
+
+msgid "media.solid"
+msgstr "Sólido"
+
+msgid "media.linear"
+msgstr "Linear"
+
+msgid "media.radial"
+msgstr "Radial"
+
+msgid "media.gradient"
+msgstr "Gradiente"
+
+msgid "media.choose-image"
+msgstr "Elegir imagen"
+
+msgid "workspace.options.guides.title"
+msgstr "Guías"
+
+msgid "workspace.context-menu.grid-track.column.duplicate"
+msgstr "Duplicar columna"
+
+msgid "workspace.context-menu.grid-track.column.add-before"
+msgstr "Añadir 1 columna a la izquierda"
+
+msgid "workspace.context-menu.grid-track.column.add-after"
+msgstr "Añadir 1 columna a la derecha"
+
+msgid "workspace.context-menu.grid-track.column.delete"
+msgstr "Borrar columna"
+
+msgid "workspace.context-menu.grid-track.column.delete-shapes"
+msgstr "Borrar columna con el contenido"
+
+msgid "workspace.context-menu.grid-track.row.duplicate"
+msgstr "Duplicar fila"
+
+msgid "workspace.context-menu.grid-track.row.add-before"
+msgstr "Añadir 1 fila encima"
+
+msgid "workspace.context-menu.grid-track.row.add-after"
+msgstr "Añadir 1 fila debajo"
+
+msgid "workspace.context-menu.grid-track.row.delete"
+msgstr "Borrar fila"
+
+msgid "workspace.context-menu.grid-track.row.delete-shapes"
+msgstr "Borrar fila con el contenido"
+
+msgid "workspace.context-menu.grid-cells.merge"
+msgstr "Fusionar celdas"
+
+msgid "workspace.context-menu.grid-cells.area"
+msgstr "Crear area"
+
+msgid "workspace.context-menu.grid-cells.create-board"
+msgstr "Crear tablero"
+

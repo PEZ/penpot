@@ -54,13 +54,13 @@
          current-range nil]
     (if pending
       (let [[next-shape rect :as next-shape+rects] (first pending)]
-        
+
         (if (or (not current-range) (overlaps-range? axis current-range rect))
           ;; Add shape to current row
           (let [current-track (conj current-track (:id next-shape))
                 current-range (join-range axis current-range rect)]
             (recur (next pending) result index current-track current-range))
-          
+
           ;; New row
           (recur (next pending)
                  (conj result {:index index
@@ -113,8 +113,8 @@
 
   ([_objects shapes parent]
    (if (empty? shapes)
-     (-> {:layout-grid-columns [{:type :auto} {:type :auto}]
-          :layout-grid-rows [{:type :auto} {:type :auto}]}
+     (-> {:layout-grid-columns [ctl/default-track-value ctl/default-track-value]
+          :layout-grid-rows [ctl/default-track-value ctl/default-track-value]}
          (ctl/create-cells [1 1 2 2]))
 
      (let [all-shapes-rect (gco/shapes->rect shapes)
@@ -149,8 +149,8 @@
              0
              (/ (- (:height all-shapes-rect) total-rows-height) (dec num-rows)))
 
-           layout-grid-rows (mapv (constantly (array-map :type :auto)) rows)
-           layout-grid-columns (mapv (constantly (array-map :type :auto)) cols)
+           layout-grid-rows (mapv (constantly ctl/default-track-value) rows)
+           layout-grid-columns (mapv (constantly ctl/default-track-value) cols)
 
            parent-childs-vector (gpt/to-vec (gpo/origin (:points parent)) (gpt/point all-shapes-rect))
            p-left (:x parent-childs-vector)

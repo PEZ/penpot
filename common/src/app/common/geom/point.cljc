@@ -7,11 +7,11 @@
 (ns app.common.geom.point
   (:refer-clojure :exclude [divide min max abs])
   (:require
-   #?(:cljs [cljs.pprint :as pp]
-      :clj  [clojure.pprint :as pp])
+   #?(:clj [app.common.fressian :as fres])
    #?(:cljs [cljs.core :as c]
       :clj [clojure.core :as c])
-   #?(:clj [app.common.fressian :as fres])
+   #?(:cljs [cljs.pprint :as pp]
+      :clj  [clojure.pprint :as pp])
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.exceptions :as ex]
@@ -495,6 +495,12 @@
     (pos->Point (if (mth/almost-zero? x) 0.001 x)
                 (if (mth/almost-zero? y) 0.001 y))))
 
+(defn resize
+  "Creates a new vector with the same direction but different length"
+  [vector new-length]
+  (let [old-length (length vector)]
+    (scale vector (/ new-length old-length))))
+
 ;; FIXME: perfromance
 (defn abs
   [point]
@@ -522,3 +528,4 @@
   :class Point
   :wfn #(into {} %)
   :rfn map->Point})
+

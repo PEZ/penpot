@@ -8,18 +8,18 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.focus :as cpf]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.geom.rect :as grc]
    [app.common.geom.shapes :as gsh]
    [app.common.geom.snap :as sp]
    [app.common.math :as mth]
-   [app.common.pages.focus :as cpf]
-   [app.common.pages.helpers :as cph]
    [app.common.uuid :refer [zero]]
    [app.main.refs :as refs]
    [app.main.worker :as uw]
    [app.util.range-tree :as rt]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [clojure.set :as set]))
 
 (def ^:const snap-accuracy 10)
@@ -181,7 +181,7 @@
                           range-tree
                           (- cd snap-distance-accuracy)
                           (+ cd snap-distance-accuracy))
-                         (map #(- (first %) cd ))))))))
+                         (map #(- (first %) cd))))))))
 
         get-middle-snaps
         (fn [lt-dist gt-dist]
@@ -220,7 +220,7 @@
                  :frame-id frame-id
                  :include-frames? true
                  :rect area})
-       (rx/map #(cph/clean-loops objects %))
+       (rx/map #(cfh/clean-loops objects %))
        (rx/map #(set/difference % selected))
        (rx/map #(map (d/getf objects) %))))
 

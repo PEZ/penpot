@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.auth.verify-token
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.main.data.messages :as dm]
    [app.main.data.users :as du]
@@ -16,7 +17,7 @@
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.router :as rt]
    [app.util.timers :as ts]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [rumext.v2 :as mf]))
 
 (defmulti handle-token (fn [token] (:iss token)))
@@ -66,7 +67,7 @@
     (mf/with-effect []
       (dom/set-html-title (tr "title.default"))
       (->> (rp/cmd! :verify-token {:token token})
-           (rx/subs
+           (rx/subs!
             (fn [tdata]
               (handle-token tdata))
             (fn [{:keys [type code] :as error}]
@@ -92,9 +93,6 @@
                   (st/emit! (rt/nav :auth-login))))))))
 
     (if @bad-token
-      [:> static/static-header {}
-       [:div.image i/unchain]
-       [:div.main-message (tr "errors.invite-invalid")]
-       [:div.desc-message (tr "errors.invite-invalid.info")]]
-      [:div.verify-token
+      [:> static/invalid-token {}]
+      [:div {:class (stl/css :verify-token)}
        i/loader-pencil])))

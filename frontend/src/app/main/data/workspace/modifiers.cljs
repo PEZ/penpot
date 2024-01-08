@@ -9,12 +9,12 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.modifiers :as gm]
    [app.common.geom.point :as gpt]
    [app.common.geom.rect :as grc]
    [app.common.geom.shapes :as gsh]
    [app.common.math :as mth]
-   [app.common.pages.helpers :as cph]
    [app.common.types.component :as ctk]
    [app.common.types.container :as ctn]
    [app.common.types.modifiers :as ctm]
@@ -27,8 +27,8 @@
    [app.main.data.workspace.guides :as-alias dwg]
    [app.main.data.workspace.state-helpers :as wsh]
    [app.main.data.workspace.undo :as dwu]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 ;; -- temporary modifiers -------------------------------------------
 
@@ -95,7 +95,7 @@
                    (if (:component-root shape)
                      transformed-shape
                      (gsh/transform-shape root (dm/get-in modif-tree [(:id root) :modifiers])))]
-               
+
                (get-ignore-tree ignore-tree shape transformed-shape root transformed-root)))
 
             ([ignore-tree shape root transformed-root]
@@ -112,7 +112,7 @@
                      (assoc
                       shape-id
                       (check-delta shape root transformed-shape transformed-root)))
-                   
+
                    set-child
                    (fn [ignore-tree child]
                      (get-ignore-tree ignore-tree child root transformed-root))]
@@ -191,14 +191,14 @@
         ;; Temporary remove the children when moving them
         frame (-> frame
                   (update :shapes #(d/removev ids %))
-                  (ctl/assign-cells))
+                  (ctl/assign-cells objects))
 
-        ids (->> ids (remove #(ctl/layout-absolute? objects %)))
+        ids (->> ids (remove #(ctl/position-absolute? objects %)))
         frame (-> frame
                   (update :shapes d/concat-vec ids)
                   (cond-> (some? cell)
                     (ctl/push-into-cell ids row column))
-                  (ctl/assign-cells))]
+                  (ctl/assign-cells objects))]
 
     (-> modifiers
         (ctm/change-property :layout-grid-rows (:layout-grid-rows frame))
@@ -275,11 +275,11 @@
         (update-in [target-frame-id :modifiers] ctm/change-property :layout-item-v-sizing :fix)))))
 
 (defn modif->js
-     [modif-tree objects]
-     (clj->js (into {}
-                    (map (fn [[k v]]
-                           [(get-in objects [k :name]) v]))
-                    modif-tree)))
+  [modif-tree objects]
+  (clj->js (into {}
+                 (map (fn [[k v]]
+                        [(get-in objects [k :name]) v]))
+                 modif-tree)))
 
 (defn apply-text-modifier
   [shape {:keys [width height]}]
@@ -301,19 +301,19 @@
                (d/update-when result id apply-text-modifier text-modifier))))))
 
 #_(defn apply-path-modifiers
-  [objects path-modifiers]
-  (letfn [(apply-path-modifier
-            [shape {:keys [content-modifiers]}]
-            (let [shape (update shape :content upc/apply-content-modifiers content-modifiers)
-                  [points selrect] (helpers/content->points+selrect shape (:content shape))]
-              (assoc shape :selrect selrect :points points)))]
-    (loop [modifiers (seq path-modifiers)
-           result objects]
-      (if (empty? modifiers)
-        result
-        (let [[id path-modifier] (first modifiers)]
-          (recur (rest modifiers)
-                 (update objects id apply-path-modifier path-modifier)))))))
+    [objects path-modifiers]
+    (letfn [(apply-path-modifier
+              [shape {:keys [content-modifiers]}]
+              (let [shape (update shape :content upc/apply-content-modifiers content-modifiers)
+                    [points selrect] (helpers/content->points+selrect shape (:content shape))]
+                (assoc shape :selrect selrect :points points)))]
+      (loop [modifiers (seq path-modifiers)
+             result objects]
+        (if (empty? modifiers)
+          result
+          (let [[id path-modifier] (first modifiers)]
+            (recur (rest modifiers)
+                   (update objects id apply-path-modifier path-modifier)))))))
 
 (defn- calculate-modifiers
   ([state modif-tree]
@@ -474,7 +474,7 @@
 
              ids-with-children
              (into ids
-                   (mapcat (partial cph/get-children-ids objects))
+                   (mapcat (partial cfh/get-children-ids objects))
                    ids)
 
              ignore-tree
@@ -492,7 +492,7 @@
                   ids
                   (fn [shape]
                     (let [modif (get-in object-modifiers [(:id shape) :modifiers])
-                          text-shape? (cph/text-shape? shape)
+                          text-shape? (cfh/text-shape? shape)
                           position-data (when text-shape?
                                           (dm/get-in text-modifiers [(:id shape) :position-data]))]
                       (-> shape
@@ -544,8 +544,7 @@
                            :layout-item-margin-type
                            :layout-grid-cells
                            :layout-grid-columns
-                           :layout-grid-rows
-                           ]})
+                           :layout-grid-rows]})
                  ;; We've applied the text-modifier so we can dissoc the temporary data
                  (fn [state]
                    (update state :workspace-text-modifier #(apply dissoc % ids)))

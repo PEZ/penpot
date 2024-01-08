@@ -7,8 +7,8 @@
 (ns app.main.data.workspace.thumbnails
   (:require
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.logging :as l]
-   [app.common.pages.helpers :as cph]
    [app.common.thumbnails :as thc]
    [app.common.uuid :as uuid]
    [app.main.data.workspace.changes :as dch]
@@ -24,8 +24,8 @@
    [app.util.time :as tp]
    [app.util.timers :as tm]
    [app.util.webapi :as wapi]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 (l/set-level! :info)
 
@@ -78,7 +78,7 @@
 
   (let [object-id (or object-id (thc/fmt-object-id file-id page-id frame-id tag))
         tp        (tp/tpoint-ms)
-        objects   (wsh/lookup-page-objects state page-id)
+        objects   (wsh/lookup-objects state file-id page-id)
         shape     (get objects frame-id)]
 
     (->> (render/render-frame objects shape object-id)
@@ -116,11 +116,16 @@
     (ptk/reify ::assoc-thumbnail
       ptk/UpdateEvent
       (update [_ state]
-        (let [prev-uri (dm/get-in state [:workspace-thumbnails object-id])]
+        (let [prev-uri (dm/get-in state [:workspace-thumbnails object-id])
+              current-file-id  (:current-file-id state)]
           (some->> prev-uri (vreset! prev-uri*))
           (l/trc :hint "assoc thumbnail" :object-id object-id :uri uri)
 
-          (update state :workspace-thumbnails assoc object-id uri)))
+          #_(update state :workspace-thumbnails assoc object-id uri)
+          (if (thc/file-id? object-id current-file-id)
+            (update state :workspace-thumbnails assoc object-id uri)
+            (let [file-id (thc/get-file-id object-id)]
+              (update-in state [:workspace-libraries file-id :thumbnails] assoc object-id uri)))))
 
       ptk/EffectEvent
       (effect [_ _ _]
@@ -152,7 +157,7 @@
       (watch [_ state stream]
         (l/dbg :hint "update thumbnail" :object-id object-id :tag tag)
         ;; Send the update to the back-end
-        (->> (get-thumbnail state file-id page-id frame-id {:object-id object-id})
+        (->> (get-thumbnail state file-id page-id frame-id tag)
              (rx/mapcat (fn [uri]
                           (rx/merge
                            (rx/of (assoc-thumbnail object-id uri))
@@ -164,7 +169,7 @@
                                                            :object-id object-id
                                                            :media blob
                                                            :tag (or tag "frame")}]
-                                               (rp/cmd! :upsert-file-object-thumbnail params))))
+                                               (rp/cmd! :create-file-object-thumbnail params))))
                                 (rx/catch rx/empty)
                                 (rx/ignore)))))
              (rx/catch (fn [cause]
@@ -200,8 +205,8 @@
                 new-shape    (get new-objects id)
                 old-shape    (get old-objects id)
 
-                old-frame-id (if (cph/frame-shape? old-shape) id (:frame-id old-shape))
-                new-frame-id (if (cph/frame-shape? new-shape) id (:frame-id new-shape))]
+                old-frame-id (if (cfh/frame-shape? old-shape) id (:frame-id old-shape))
+                new-frame-id (if (cfh/frame-shape? new-shape) id (:frame-id new-shape))]
 
             (cond-> #{}
               (and (some? old-frame-id) (not= uuid/zero old-frame-id))
@@ -246,7 +251,7 @@
                        (rx/filter dch/commit-changes?)
                        (rx/observe-on :async)
                        (rx/with-latest-from workspace-data-s)
-                       (rx/flat-map (partial extract-frame-changes page-id))
+                       (rx/merge-map (partial extract-frame-changes page-id))
                        (rx/tap #(l/trc :hint "inconming change" :origin "local" :frame-id (dm/str %))))
 
                   ;; NOTIFICATIONS CHANGES
@@ -254,7 +259,7 @@
                        (rx/filter (ptk/type? ::wnt/handle-file-change))
                        (rx/observe-on :async)
                        (rx/with-latest-from workspace-data-s)
-                       (rx/flat-map (partial extract-frame-changes page-id))
+                       (rx/merge-map (partial extract-frame-changes page-id))
                        (rx/tap #(l/trc :hint "inconming change" :origin "notifications" :frame-id (dm/str %))))
 
                   ;; PERSISTENCE CHANGES

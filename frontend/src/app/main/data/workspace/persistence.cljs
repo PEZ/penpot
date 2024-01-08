@@ -7,9 +7,8 @@
 (ns app.main.data.workspace.persistence
   (:require
    [app.common.data.macros :as dm]
+   [app.common.files.changes :as cpc]
    [app.common.logging :as log]
-   [app.common.pages :as cp]
-   [app.common.pages.changes :as cpc]
    [app.common.types.shape-tree :as ctst]
    [app.common.uuid :as uuid]
    [app.main.data.workspace.changes :as dch]
@@ -19,9 +18,9 @@
    [app.main.store :as st]
    [app.util.router :as rt]
    [app.util.time :as dt]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [okulary.core :as l]
-   [potok.core :as ptk]))
+   [potok.v2.core :as ptk]))
 
 (log/set-level! :info)
 
@@ -146,8 +145,7 @@
                       :revn file-revn
                       :session-id sid
                       :changes-with-metadata (into [] changes)
-                      :features features
-                      }]
+                      :features features}]
 
         (->> (rp/cmd! :update-file params)
              (rx/mapcat (fn [lagged]
@@ -204,9 +202,8 @@
   (ptk/reify ::persist-synchronous-changes
     ptk/WatchEvent
     (watch [_ state _]
-      (let [features (cond-> #{}
-                       (features/active-feature? state "components/v2")
-                       (conj "components/v2"))
+      (let [features (features/get-team-enabled-features state)
+
             sid      (:session-id state)
             file     (dm/get-in state [:workspace-libraries file-id])
 
@@ -240,7 +237,7 @@
   [file-id {:keys [revn changes]}]
   (dm/assert! (uuid? file-id))
   (dm/assert! (int? revn))
-  (dm/assert! (cpc/valid-changes? changes))
+  (dm/assert! (cpc/check-changes! changes))
 
   (ptk/reify ::shapes-changes-persisted
     ptk/UpdateEvent
@@ -259,12 +256,13 @@
                                                  entries (seq changes)]
                                             (if-let [[page-id changes] (first entries)]
                                               (recur (-> fdata
-                                                         (cp/process-changes changes)
-                                                         (ctst/update-object-indices page-id))
+                                                         (cpc/process-changes changes)
+                                                         (cond-> (some? page-id)
+                                                           (ctst/update-object-indices page-id)))
                                                      (rest entries))
                                               fdata))))))
           (-> state
               (update-in [:workspace-libraries file-id :revn] max revn)
-              (update-in [:workspace-libraries file-id :data] cp/process-changes changes)))
+              (update-in [:workspace-libraries file-id :data] cpc/process-changes changes)))
 
         state))))

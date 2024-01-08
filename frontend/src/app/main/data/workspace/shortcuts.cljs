@@ -10,6 +10,7 @@
    [app.main.data.exports :as de]
    [app.main.data.preview :as dp]
    [app.main.data.shortcuts :as ds]
+   [app.main.data.users :as du]
    [app.main.data.workspace :as dw]
    [app.main.data.workspace.colors :as mdc]
    [app.main.data.workspace.common :as dwc]
@@ -254,7 +255,7 @@
                           :command "t"
                           :subsections [:tools]
                           :fn #(emit-when-no-readonly dwtxt/start-edit-if-selected
-                                 (dwd/select-for-drawing :text))}
+                                                      (dwd/select-for-drawing :text))}
 
    :draw-path            {:tooltip "P"
                           :command "p"
@@ -398,7 +399,7 @@
                           :command (ds/c-mod "shift+e")
                           :subsections [:basics :main-menu]
                           :fn #(st/emit!
-                                 (de/show-workspace-export-dialog))}
+                                (de/show-workspace-export-dialog))}
 
    :toggle-snap-guide    {:tooltip (ds/meta-shift "G")
                           :command (ds/c-mod "shift+g")
@@ -431,15 +432,15 @@
                          :command (ds/a-mod "p")
                          :subsections [:panels]
                          :fn #(do (r/set-resize-type! :bottom)
-                                (emit-when-no-readonly (dw/remove-layout-flag :textpalette)
-                                  (toggle-layout-flag :colorpalette)))}
+                                  (emit-when-no-readonly (dw/remove-layout-flag :textpalette)
+                                                         (toggle-layout-flag :colorpalette)))}
 
    :toggle-textpalette  {:tooltip (ds/alt "T")
                          :command (ds/a-mod "t")
                          :subsections [:panels]
                          :fn #(do (r/set-resize-type! :bottom)
-                                (emit-when-no-readonly (dw/remove-layout-flag :colorpalette)
-                                  (toggle-layout-flag :textpalette)))}
+                                  (emit-when-no-readonly (dw/remove-layout-flag :colorpalette)
+                                                         (toggle-layout-flag :textpalette)))}
 
    :hide-ui              {:tooltip "\\"
                           :command "\\"
@@ -546,7 +547,13 @@
    ;; PREVIEW
    :preview-frame        {:tooltip (ds/meta (ds/alt ds/enter))
                           :command (ds/c-mod "alt+enter")
-                          :fn #(emit-when-no-readonly (dp/open-preview-selected))}})
+                          :fn #(emit-when-no-readonly (dp/open-preview-selected))}
+
+
+   ;; THEME
+   :toggle-light-dark    {:tooltip (ds/meta (ds/alt "Q"))
+                          :command (ds/c-mod "alt+q")
+                          :fn #(st/emit! (du/toggle-theme))}})
 
 (def opacity-shortcuts
   (into {} (->>

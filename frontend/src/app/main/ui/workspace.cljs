@@ -5,7 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.workspace
-  (:require-macros [app.main.style :refer [css]])
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data.macros :as dm]
    [app.main.data.messages :as msg]
@@ -20,19 +20,16 @@
    [app.main.ui.hooks :as hooks]
    [app.main.ui.hooks.resize :refer [use-resize-observer]]
    [app.main.ui.icons :as i]
-   [app.main.ui.workspace.colorpalette :refer [colorpalette]]
    [app.main.ui.workspace.colorpicker]
    [app.main.ui.workspace.context-menu :refer [context-menu]]
    [app.main.ui.workspace.coordinates :as coordinates]
-   [app.main.ui.workspace.header :refer [header]]
-   [app.main.ui.workspace.left-toolbar :refer [left-toolbar]]
    [app.main.ui.workspace.libraries]
    [app.main.ui.workspace.nudge]
    [app.main.ui.workspace.palette :refer [palette]]
    [app.main.ui.workspace.sidebar :refer [left-sidebar right-sidebar]]
    [app.main.ui.workspace.sidebar.collapsable-button :refer [collapsed-button]]
    [app.main.ui.workspace.sidebar.history :refer [history-toolbox]]
-   [app.main.ui.workspace.textpalette :refer [textpalette]]
+   [app.main.ui.workspace.top-toolbar :refer [top-toolbar]]
    [app.main.ui.workspace.viewport :refer [viewport]]
    [app.util.debug :as dbg]
    [app.util.dom :as dom]
@@ -61,7 +58,8 @@
 (mf/defc workspace-content
   {::mf/wrap-props false}
   [{:keys [file layout page-id wglobal]}]
-  (let [selected (mf/deref refs/selected-shapes)
+  (let [palete-size (mf/use-state nil)
+        selected (mf/deref refs/selected-shapes)
 
         {:keys [vport] :as wlocal} (mf/deref refs/workspace-local)
         {:keys [options-mode]} wglobal
@@ -69,7 +67,6 @@
         colorpalette?  (:colorpalette layout)
         textpalette?   (:textpalette layout)
         hide-ui?       (:hide-ui layout)
-        new-css-system (mf/use-ctx ctx/new-css-system)
 
         on-resize
         (mf/use-fn
@@ -78,27 +75,27 @@
            (when (and vport (not= size vport))
              (st/emit! (dw/update-viewport-size resize-type size)))))
 
+        on-resize-palette
+        (mf/use-fn
+         (fn [size]
+           (reset! palete-size size)))
+
         node-ref (use-resize-observer on-resize)]
     [:*
-     (if new-css-system
-       [:& palette {:layout layout}]
-       [:*
-        (when (and colorpalette? (not hide-ui?))
-          [:& colorpalette])
-
-        (when (and textpalette? (not hide-ui?))
-          [:& textpalette])])
+     (when (not hide-ui?)
+       [:& palette {:layout layout
+                    :on-change-palette-size on-resize-palette}])
 
      [:section.workspace-content
       {:key (dm/str "workspace-" page-id)
        :ref node-ref}
 
-      [:section.workspace-viewport
+      [:section {:class (stl/css :workspace-viewport)}
        (when (dbg/enabled? :coordinates)
          [:& coordinates/coordinates {:colorpalette? colorpalette?}])
 
        (when (dbg/enabled? :history-overlay)
-         [:div.history-debug-overlay
+         [:div {:class (stl/css :history-debug-overlay)}
           [:button {:on-click #(st/emit! dw/reinitialize-undo)} "CLEAR"]
           [:& history-toolbox]])
 
@@ -106,11 +103,14 @@
                      :wlocal wlocal
                      :wglobal wglobal
                      :selected selected
-                     :layout layout}]]]
+                     :layout layout
+                     :palete-size
+                     (when (and (or colorpalette? textpalette?) (not hide-ui?))
+                       @palete-size)}]]]
 
      (when-not hide-ui?
        [:*
-        [:& left-toolbar {:layout layout}]
+        [:& top-toolbar {:layout layout}]
         (if (:collapse-left-sidebar layout)
           [:& collapsed-button]
           [:& left-sidebar {:layout layout
@@ -124,10 +124,8 @@
 
 (mf/defc workspace-loader
   []
-  (let [new-css-system (mf/use-ctx ctx/new-css-system)]
-    [:div {:class (if new-css-system (css :workspace-loader)
-                      (dom/classnames :workspace-loader true))}
-     i/loader-pencil]))
+  [:div {:class (stl/css :workspace-loader)}
+   i/loader-pencil])
 
 (mf/defc workspace-page
   {::mf/wrap-props false}
@@ -177,7 +175,6 @@
         file-ready?      (mf/deref file-ready*)
 
         components-v2?   (features/use-feature "components/v2")
-        new-css-system   (features/use-feature "styles/v2")
 
         background-color (:background-color wglobal)]
 
@@ -203,35 +200,15 @@
       [:& (mf/provider ctx/current-team-id) {:value team-id}
        [:& (mf/provider ctx/current-page-id) {:value page-id}
         [:& (mf/provider ctx/components-v2) {:value components-v2?}
-         [:& (mf/provider ctx/new-css-system) {:value new-css-system}
-          [:& (mf/provider ctx/workspace-read-only?) {:value read-only?}
-           (if new-css-system
-             [:section#workspace-refactor {:class (css :workspace)
-                                           :style {:background-color background-color
-                                                   :touch-action "none"}}
-              [:& context-menu]
+         [:& (mf/provider ctx/workspace-read-only?) {:value read-only?}
+          [:section#workspace-refactor {:class (stl/css :workspace)
+                                        :style {:background-color background-color
+                                                :touch-action "none"}}
+           [:& context-menu]
 
-              (if ^boolean file-ready?
-                [:& workspace-page {:page-id page-id
-                                    :file file
-                                    :wglobal wglobal
-                                    :layout layout}]
-                [:& workspace-loader])]
-
-
-             [:section#workspace {:style {:background-color background-color
-                                          :touch-action "none"}}
-              (when (not (:hide-ui layout))
-                [:& header {:file file
-                            :page-id page-id
-                            :project project
-                            :layout layout}])
-
-              [:& context-menu]
-
-              (if ^boolean file-ready?
-                [:& workspace-page {:page-id page-id
-                                    :file file
-                                    :wglobal wglobal
-                                    :layout layout}]
-                [:& workspace-loader])])]]]]]]]))
+           (if ^boolean file-ready?
+             [:& workspace-page {:page-id page-id
+                                 :file file
+                                 :wglobal wglobal
+                                 :layout layout}]
+             [:& workspace-loader])]]]]]]]))

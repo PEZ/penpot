@@ -12,9 +12,9 @@
    [app.util.browser-history :as bhistory]
    [app.util.dom :as dom]
    [app.util.timers :as ts]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [goog.events :as e]
-   [potok.core :as ptk]
+   [potok.v2.core :as ptk]
    [reitit.core :as r]))
 
 ;; --- Router API
@@ -154,9 +154,9 @@
             router  (:router state)]
         (ts/schedule #(on-change router (.getToken ^js history)))
         (->> (rx/create (fn [subs]
-                           (let [key (e/listen history "navigate" (fn [o] (rx/push! subs (.-token ^js o))))]
-                             (fn []
-                               (bhistory/disable! history)
-                               (e/unlistenByKey key)))))
-              (rx/take-until stoper)
-              (rx/subs #(on-change router %)))))))
+                          (let [key (e/listen history "navigate" (fn [o] (rx/push! subs (.-token ^js o))))]
+                            (fn []
+                              (bhistory/disable! history)
+                              (e/unlistenByKey key)))))
+             (rx/take-until stoper)
+             (rx/subs! #(on-change router %)))))))

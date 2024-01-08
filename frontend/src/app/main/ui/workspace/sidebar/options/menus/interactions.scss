@@ -10,223 +10,326 @@
   display: flex;
   flex-direction: column;
   gap: $s-8;
-  .interaction-options {
+}
+
+.interaction-options {
+  @include flexColumn;
+}
+
+.add-interaction-btn {
+  @extend .button-tertiary;
+  height: $s-32;
+  width: $s-28;
+  svg {
+    @extend .button-icon;
+    stroke: var(--icon-foreground);
+  }
+}
+
+.help-content {
+  padding: $s-20;
+}
+
+.help-group {
+  margin-bottom: $s-40;
+}
+
+.interactions-help-icon {
+  @include flexCenter;
+  width: $s-48;
+  height: $s-48;
+  border-radius: $br-circle;
+  background-color: var(--pill-background-color);
+  margin: 0 auto $s-12 auto;
+  svg {
+    @extend .button-icon;
+    stroke: var(--icon-foreground);
+    height: $s-32;
+    width: $s-32;
+  }
+}
+
+.interactions-help {
+  @include titleTipography;
+  text-align: center;
+  color: var(--title-foreground-color);
+}
+
+.element-set {
+  @include flexColumn;
+}
+
+.add-flow-btn {
+  @extend .button-tertiary;
+  height: $s-32;
+  width: $s-28;
+  svg {
+    @extend .button-icon;
+  }
+}
+
+.interactions-info {
+  flex-grow: 1;
+  display: grid;
+}
+
+.trigger-name {
+  color: var(--color-foreground-primary);
+}
+
+.action-summary {
+  color: var(--color-foreground-secondary);
+  @include textEllipsis;
+}
+
+.groups {
+  @include flexColumn($s-12);
+}
+
+.element-set-options-group {
+  &.open {
     @include flexColumn;
-    .element-title {
-      .add-interaction-btn {
-        @extend .button-tertiary;
-        height: $s-32;
-        width: $s-28;
-        svg {
-          @extend .button-icon;
-          stroke: var(--icon-foreground);
-        }
-      }
-    }
-
-    .help-content {
-      .help-group {
-        margin-bottom: $s-40;
-        .interactions-help-icon {
-          @include flexCenter;
-          width: $s-48;
-          height: $s-48;
-          border-radius: $br-circle;
-          background-color: var(--pill-background-color);
-          margin: 0 auto $s-12 auto;
-          svg {
-            @extend .button-icon;
-            stroke: var(--icon-foreground);
-            height: $s-32;
-            width: $s-32;
-          }
-        }
-        .interactions-help {
-          @include titleTipography;
-          text-align: center;
-        }
-      }
-    }
-    .groups {
+    .extended-options {
       @include flexColumn;
-      .element-set-options-group {
-        &.open {
-          @include flexColumn;
-          .extended-options {
-            @include flexColumn;
-            .property-row {
-              @extend .attr-row;
-              .interaction-name {
-                @include twoLineTextEllipsis;
-                @include titleTipography;
-                padding-left: $s-4;
-                width: $s-92;
-                margin: auto 0;
-                grid-area: name;
-              }
-              .select-wrapper {
-                display: flex;
-                align-items: center;
-                grid-area: content;
-              }
-              .input-element-wrapper {
-                @extend .input-element;
-                grid-area: content;
-              }
-              .checkbox-option {
-                @extend .input-checkbox;
-                grid-area: content;
-              }
-              .position-btns-wrapper {
-                grid-area: content;
-                display: grid;
-                grid-template-areas:
-                  "topleft top topright"
-                  "left center right"
-                  "bottomleft bottom bottomright";
-                grid-template-columns: repeat(3, 1fr);
-                grid-template-rows: repeat(3, 1fr);
-                width: $s-84;
-                height: $s-84;
-                border-radius: $br-8;
-                background-color: var(--color-background-tertiary);
-                .direction-btn {
-                  @extend .button-tertiary;
-                  height: $s-28;
-                  width: $s-28;
-                  .rectangle {
-                    height: $s-8;
-                    width: $s-8;
-                    background-color: var(--color-background-quaternary);
-                  }
-                  &:hover {
-                    .rectangle {
-                      background-color: var(--color-accent-primary);
-                    }
-                  }
-                  &.active {
-                    background-color: var(--color-background-quaternary);
-                    .rectangle {
-                      background-color: var(--color-accent-primary);
-                    }
-                  }
-                }
-                .center-btn {
-                  grid-area: center;
-                }
-                .top-left-btn {
-                  grid-area: topleft;
-                }
-                .top-right-btn {
-                  grid-area: topright;
-                }
-                .top-center-btn {
-                  grid-area: top;
-                }
-                .bottom-left-btn {
-                  grid-area: bottomleft;
-                }
-                .bottom-right-btn {
-                  grid-area: bottomright;
-                }
-                .bottom-center-btn {
-                  grid-area: bottom;
-                }
-              }
-              .buttons-wrapper {
-                grid-area: content;
-                .right svg {
-                  transform: rotate(-90deg);
-                }
-                .left svg {
-                  transform: rotate(90deg);
-                }
-                .up svg {
-                  transform: rotate(180deg);
-                }
-              }
-              .inputs-wrapper {
-                grid-area: content;
-                @include flexRow;
-                .radio-btn {
-                  @extend .input-checkbox;
-                }
-              }
+      .property-row {
+        @extend .attr-row;
+        &.big-row {
+          height: 100%;
+        }
+        .interaction-name {
+          @include twoLineTextEllipsis;
+          @include titleTipography;
+          padding-left: $s-4;
+          width: $s-92;
+          margin: auto 0;
+          grid-area: name;
+          color: var(--title-foreground-color);
+        }
+        .select-wrapper {
+          display: flex;
+          align-items: center;
+          grid-area: content;
+          .easing-select {
+            width: $s-156;
+            padding: 0 $s-8;
+            .dropdown-upwards {
+              bottom: $s-36;
+              width: $s-156;
+              top: unset;
             }
           }
         }
-
-        .interactions-summary {
-          @extend .asset-element;
-          height: $s-44;
-          padding: 0;
-          gap: $s-4;
-          .extend-btn {
+        .input-element-wrapper {
+          @extend .input-element;
+          grid-area: content;
+        }
+        .checkbox-option {
+          @extend .input-checkbox;
+          grid-area: content;
+        }
+        .position-btns-wrapper {
+          grid-area: content;
+          display: grid;
+          grid-template-areas:
+            "topleft top topright"
+            "left center right"
+            "bottomleft bottom bottomright";
+          grid-template-columns: repeat(3, 1fr);
+          grid-template-rows: repeat(3, 1fr);
+          width: $s-84;
+          height: $s-84;
+          border-radius: $br-8;
+          background-color: var(--color-background-tertiary);
+          .direction-btn {
             @extend .button-tertiary;
-            height: $s-32;
+            height: $s-28;
             width: $s-28;
-            svg {
-              @extend .button-icon;
+            .rectangle {
+              height: $s-8;
+              width: $s-8;
+              background-color: var(--color-background-quaternary);
+            }
+            &:hover {
+              .rectangle {
+                background-color: var(--color-accent-primary);
+              }
+            }
+            &.active {
+              background-color: var(--color-background-quaternary);
+              .rectangle {
+                background-color: var(--color-accent-primary);
+              }
             }
           }
-
-          .interactions-info {
-            flex-grow: 1;
-            .trigger-name {
-              color: white;
-            }
-            .action-summary {
-              color: var(--color-foreground-secondary);
-            }
+          .center-btn {
+            grid-area: center;
           }
-          .remove-btn {
-            @extend .button-tertiary;
-            height: $s-32;
-            width: $s-28;
-            svg {
-              @extend .button-icon;
-            }
+          .top-left-btn {
+            grid-area: topleft;
+          }
+          .top-right-btn {
+            grid-area: topright;
+          }
+          .top-center-btn {
+            grid-area: top;
+          }
+          .bottom-left-btn {
+            grid-area: bottomleft;
+          }
+          .bottom-right-btn {
+            grid-area: bottomright;
+          }
+          .bottom-center-btn {
+            grid-area: bottom;
+          }
+        }
+        .buttons-wrapper {
+          grid-area: content;
+          .right svg {
+            transform: rotate(-90deg);
+          }
+          .left svg {
+            transform: rotate(90deg);
+          }
+          .up svg {
+            transform: rotate(180deg);
+          }
+        }
+        .inputs-wrapper {
+          grid-area: content;
+          @include flexRow;
+          .radio-btn {
+            @extend .input-checkbox;
           }
         }
       }
     }
   }
-  .element-set {
-    @include flexColumn;
-    .add-flow-btn {
+
+  .interactions-summary {
+    @extend .asset-element;
+    height: $s-44;
+    padding: 0;
+    gap: $s-4;
+    .extend-btn {
       @extend .button-tertiary;
-      height: $s-32;
+      height: 100%;
       width: $s-28;
       svg {
         @extend .button-icon;
       }
+      &.extended {
+        background-color: var(--button-radio-background-color-active);
+        svg {
+          stroke: var(--button-radio-foreground-color-active);
+        }
+      }
+    }
+
+    .remove-btn {
+      @extend .button-tertiary;
+      height: $s-32;
+      width: $s-28;
+      svg {
+        @extend .button-icon-small;
+      }
     }
   }
 }
+
 .flow-element {
-  @extend .asset-element;
-  padding: 0;
+  @include flexRow;
+}
+
+.flow-info {
+  display: flex;
+  align-items: center;
+  gap: $s-2;
+  border-radius: $s-8;
+  background-color: var(--input-details-color);
+  height: $s-32;
+  width: 100%;
+  flex-grow: 1;
+}
+
+.flow-name-wrapper {
+  @include titleTipography;
+  @include focusInput;
+  display: flex;
+  align-items: center;
   gap: $s-4;
+  flex-grow: 1;
+  height: $s-32;
+  width: 100%;
+  border-radius: $br-8;
+  padding: 0;
+  margin-right: 0;
+  background-color: var(--input-background-color);
+  border: $s-1 solid var(--input-background-color);
+  color: var(--input-foreground-color);
   .start-flow-btn {
-    @extend .button-tertiary;
+    @include buttonStyle;
     height: $s-32;
     width: $s-28;
+    padding: 0 $s-2 0 $s-8;
+    border-radius: $br-8 0 0 $br-8;
+    background-color: transparent;
     svg {
       @extend .button-icon;
+      stroke: var(--icon-foreground);
+      &:hover {
+        stroke: var(--input-foreground-color-active);
+      }
     }
   }
-  .input-text {
+
+  .flow-input {
     @extend .input-base;
+    background-color: transparent;
+    height: $s-28;
   }
-  .flow-name-label {
+
+  .flow-input-wrapper {
+    @include titleTipography;
+    display: flex;
+    align-items: center;
+    height: $s-28;
+    padding: 0;
+    width: 100%;
+    margin: 0;
     flex-grow: 1;
+    background-color: transparent;
+    color: var(--input-foreground-color);
+    border-radius: $br-8;
   }
-  .remove-flow-btn {
-    @extend .button-tertiary;
-    height: $s-32;
-    width: $s-28;
-    svg {
-      @extend .button-icon;
+
+  &:hover {
+    background-color: var(--input-background-color-hover);
+    border: $s-1 solid var(--input-background-color-hover);
+    &:active {
+      background-color: var(--input-background-color-active);
+      .flow-input-wrapper {
+        background-color: var(--input-background-color-active);
+      }
     }
+  }
+
+  &:focus,
+  &:focus-within {
+    background-color: var(--input-background-color-active);
+  }
+
+  &.editing {
+    background-color: var(--input-background-color-active);
+  }
+}
+
+.remove-flow-btn {
+  @extend .button-tertiary;
+  height: $s-32;
+  width: $s-28;
+  min-width: $s-28;
+  svg {
+    @extend .button-icon;
   }
 }

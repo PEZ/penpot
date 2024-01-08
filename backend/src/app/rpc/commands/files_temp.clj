@@ -8,7 +8,7 @@
   (:require
    [app.common.exceptions :as ex]
    [app.common.features :as cfeat]
-   [app.common.pages :as cp]
+   [app.common.files.changes :as fch]
    [app.common.spec :as us]
    [app.common.uuid :as uuid]
    [app.config :as cf]
@@ -46,7 +46,7 @@
   [cfg {:keys [::rpc/profile-id project-id] :as params}]
   (db/tx-run! cfg (fn [{:keys [::db/conn] :as cfg}]
                     (projects/check-edition-permissions! conn profile-id project-id)
-                    (let [team     (teams/get-team cfg
+                    (let [team     (teams/get-team conn
                                                    :profile-id profile-id
                                                    :project-id project-id)
 
@@ -113,7 +113,7 @@
     (let [data
           (->> revs
                (mapcat #(->> % :changes blob/decode))
-               (cp/process-changes (blob/decode (:data file))))]
+               (fch/process-changes (blob/decode (:data file))))]
       (db/update! conn :file
                   {:deleted-at nil
                    :revn revn

@@ -7,10 +7,10 @@
 (ns app.main.ui.workspace.viewport.guides
   (:require
    [app.common.colors :as colors]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes :as gsh]
    [app.common.math :as mth]
-   [app.common.pages.helpers :as cph]
    [app.common.types.shape-tree :as ctst]
    [app.common.uuid :as uuid]
    [app.main.data.workspace :as dw]
@@ -250,11 +250,11 @@
   [guide frame]
 
   (if (= :x (:axis guide))
-    (and (>= (:position guide) (:x frame) )
-         (<= (:position guide) (+ (:x frame) (:width frame)) ))
+    (and (>= (:position guide) (:x frame))
+         (<= (:position guide) (+ (:x frame) (:width frame))))
 
-    (and (>= (:position guide) (:y frame) )
-         (<= (:position guide) (+ (:y frame) (:height frame)) ))))
+    (and (>= (:position guide) (:y frame))
+         (<= (:position guide) (+ (:y frame) (:height frame))))))
 
 (mf/defc guide
   {::mf/wrap [mf/memo]}
@@ -293,7 +293,7 @@
              (not (is-guide-inside-frame? (assoc guide :position pos) frame)))]
 
     (when (or (nil? frame)
-              (and (cph/root-frame? frame)
+              (and (cfh/root-frame? frame)
                    (not (ctst/rotated-frame? frame))))
       [:g.guide-area {:opacity (when frame-guide-outside? 0)}
        (when-not disabled-guides?

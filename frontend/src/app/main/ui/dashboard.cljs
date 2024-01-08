@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.dashboard
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.spec :as us]
@@ -42,7 +43,7 @@
         team-id     (get-in route [:params :path :team-id])
         project-id  (get-in route [:params :path :project-id])]
     (cond->
-      {:search-term search-term}
+     {:search-term search-term}
 
       (uuid-str? team-id)
       (assoc :team-id (uuid team-id))
@@ -63,7 +64,6 @@
                (d/seek :is-default)
                (:id)))
 
-
         on-resize
         (mf/use-fn
          (fn [_]
@@ -81,7 +81,8 @@
 
     (mf/use-effect on-resize)
 
-    [:div.dashboard-content {:on-click clear-selected-fn :ref container}
+    [:div {:class (stl/css :dashboard-content)
+           :on-click clear-selected-fn :ref container}
      (case section
        :dashboard-projects
        [:*
@@ -138,8 +139,7 @@
 
 (mf/defc dashboard
   [{:keys [route profile] :as props}]
-  (let [new-css-system (mf/use-ctx ctx/new-css-system)
-        section        (get-in route [:data :name])
+  (let [section        (get-in route [:data :name])
         params         (parse-params route)
 
         project-id     (:project-id params)
@@ -154,7 +154,7 @@
 
     (hooks/use-shortcuts ::dashboard sc/shortcuts)
 
-    (mf/with-effect [profile team-id]
+    (mf/with-effect [team-id]
       (st/emit! (dd/initialize {:id team-id}))
       (fn []
         (st/emit! (dd/finalize {:id team-id}))))
@@ -170,16 +170,15 @@
 
     [:& (mf/provider ctx/current-team-id) {:value team-id}
      [:& (mf/provider ctx/current-project-id) {:value project-id}
-      ;; NOTE: dashboard events and other related functions assumes
-      ;; that the team is a implicit context variable that is
-      ;; available using react context or accessing
-      ;; the :current-team-id on the state. We set the key to the
-      ;; team-id because we want to completely refresh all the
-      ;; components on team change. Many components assumes that the
-      ;; team is already set so don't put the team into mf/deps.
+            ;; NOTE: dashboard events and other related functions assumes
+            ;; that the team is a implicit context variable that is
+            ;; available using react context or accessing
+            ;; the :current-team-id on the state. We set the key to the
+            ;; team-id because we want to completely refresh all the
+            ;; components on team change. Many components assumes that the
+            ;; team is already set so don't put the team into mf/deps.
       (when team
-        [:main {:class (dom/classnames :dashboard-layout (not new-css-system)
-                                       :dashboard-layout-refactor new-css-system)
+        [:main {:class (stl/css :dashboard)
                 :key (:id team)}
          [:& sidebar
           {:team team
@@ -196,3 +195,4 @@
              :section section
              :search-term search-term
              :team team}])])]]))
+

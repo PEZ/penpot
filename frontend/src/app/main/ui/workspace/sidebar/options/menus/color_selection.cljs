@@ -14,8 +14,6 @@
    [app.main.data.workspace.selection :as dws]
    [app.main.store :as st]
    [app.main.ui.components.title-bar :refer [title-bar]]
-   [app.main.ui.context :as ctx]
-   [app.main.ui.icons :as i]
    [app.main.ui.workspace.sidebar.options.rows.color-row :refer [color-row]]
    [app.util.i18n :as i18n :refer [tr]]
    [cuerdas.core :as str]
@@ -27,6 +25,7 @@
         color-id           (:fill-color-ref-id fill)
         shared-libs-colors (dm/get-in shared-libs [color-file-id :data :colors])
         is-shared?         (contains? shared-libs-colors color-id)
+        has-color?         (or (not (nil? (:fill-color fill))) (not (nil? (:fill-color-gradient fill))))
         attrs              (if (or is-shared? (= color-file-id file-id))
                              (d/without-nils {:color    (str/lower (:fill-color fill))
                                               :opacity  (:fill-opacity fill)
@@ -36,10 +35,11 @@
                              (d/without-nils {:color    (str/lower (:fill-color fill))
                                               :opacity  (:fill-opacity fill)
                                               :gradient (:fill-color-gradient fill)}))]
-    {:attrs attrs
-     :prop :fill
-     :shape-id (:shape-id fill)
-     :index (:index fill)}))
+    (when has-color?
+      {:attrs attrs
+       :prop :fill
+       :shape-id (:shape-id fill)
+       :index (:index fill)})))
 
 (defn stroke->color-att
   [stroke file-id shared-libs]
@@ -47,7 +47,7 @@
         color-id           (:stroke-color-ref-id stroke)
         shared-libs-colors (dm/get-in shared-libs [color-file-id :data :colors])
         is-shared?         (contains? shared-libs-colors color-id)
-        has-color?         (not (nil? (:stroke-color stroke)))
+        has-color?         (or (not (nil? (:stroke-color stroke))) (not (nil? (:stroke-color-gradient stroke))))
         attrs              (if (or is-shared? (= color-file-id file-id))
                              (d/without-nils {:color    (str/lower (:stroke-color stroke))
                                               :opacity  (:stroke-opacity stroke)
@@ -156,7 +156,6 @@
   [{:keys [shapes file-id shared-libs] :as props}]
   (let [{:keys [grouped-colors library-colors colors]} (mf/with-memo [shapes file-id shared-libs]
                                                          (prepare-colors shapes file-id shared-libs))
-        new-css-system   (mf/use-ctx ctx/new-css-system)
 
         state*          (mf/use-state true)
         open?           (deref state*)
@@ -214,71 +213,17 @@
     (mf/with-effect [grouped-colors]
       (reset! grouped-colors* grouped-colors))
 
-    (if new-css-system
-      [:div {:class (stl/css :element-set)}
-       [:div {:class (stl/css :element-title)}
-        [:& title-bar {:collapsable? has-colors?
-                       :collapsed?   (not open?)
-                       :on-collapsed toggle-content
-                       :title        (tr "workspace.options.selection-color")
-                       :class        (stl/css-case :title-spacing-selected-colors (not has-colors?))}]]
+    [:div {:class (stl/css :element-set)}
+     [:div {:class (stl/css :element-title)}
+      [:& title-bar {:collapsable? has-colors?
+                     :collapsed?   (not open?)
+                     :on-collapsed toggle-content
+                     :title        (tr "workspace.options.selection-color")
+                     :class        (stl/css-case :title-spacing-selected-colors (not has-colors?))}]]
 
-       (when open?
-         [:div {:class (stl/css :element-content)}
-          [:div {:class (stl/css :selected-color-group)}
-           (for [[index color] (d/enumerate (take 3 library-colors))]
-             [:& color-row {:key (dm/str "library-color-" (:color color))
-                            :color color
-                            :index index
-                            :on-detach on-detach
-                            :select-only select-only
-                            :on-change #(on-change %1 color %2)
-                            :on-open on-open
-                            :on-close on-close}])
-           (when (and (false? @expand-lib-color) (< 3 (count library-colors)))
-             [:button  {:class (stl/css :more-colors-btn)
-                        :on-click #(reset! expand-lib-color true)}
-              (tr "workspace.options.more-lib-colors")])
-           (when @expand-lib-color
-             (for [[index color] (d/enumerate (drop 3 library-colors))]
-               [:& color-row {:key (dm/str "library-color-" (:color color))
-                              :color color
-                              :index index
-                              :on-detach on-detach
-                              :select-only select-only
-                              :on-change #(on-change %1 color %2)
-                              :on-open on-open
-                              :on-close on-close}]))]
-          [:div {:class (stl/css :selected-color-group)}
-           (for [[index color] (d/enumerate (take 3 colors))]
-             [:& color-row {:key (dm/str "color-" index)
-                            :color color
-                            :index index
-                            :select-only select-only
-                            :on-change #(on-change %1 color %2)
-                            :on-open on-open
-                            :on-close on-close}])
-           (when (and (false? @expand-color) (< 3 (count colors)))
-             [:button  {:class (stl/css :more-colors-btn)
-                        :on-click #(reset! expand-color true)}
-              (tr "workspace.options.more-colors")])
-
-           (when @expand-color
-             (for [[index color] (d/enumerate (drop 3 colors))]
-               [:& color-row {:key (dm/str "color-" (:color color))
-                              :color color
-                              :index index
-                              :select-only select-only
-                              :on-change #(on-change %1 color %2)
-                              :on-open on-open
-                              :on-close on-close}]))]])]
-
-
-      [:div.element-set
-       [:div.element-set-title
-        [:span (tr "workspace.options.selection-color")]]
-       [:div.element-set-content
-        [:div.selected-colors
+     (when open?
+       [:div {:class (stl/css :element-content)}
+        [:div {:class (stl/css :selected-color-group)}
          (for [[index color] (d/enumerate (take 3 library-colors))]
            [:& color-row {:key (dm/str "library-color-" (:color color))
                           :color color
@@ -289,9 +234,9 @@
                           :on-open on-open
                           :on-close on-close}])
          (when (and (false? @expand-lib-color) (< 3 (count library-colors)))
-           [:div.expand-colors  {:on-click #(reset! expand-lib-color true)}
-            [:span i/actions]
-            [:span.text (tr "workspace.options.more-lib-colors")]])
+           [:button  {:class (stl/css :more-colors-btn)
+                      :on-click #(reset! expand-lib-color true)}
+            (tr "workspace.options.more-lib-colors")])
          (when @expand-lib-color
            (for [[index color] (d/enumerate (drop 3 library-colors))]
              [:& color-row {:key (dm/str "library-color-" (:color color))
@@ -302,8 +247,7 @@
                             :on-change #(on-change %1 color %2)
                             :on-open on-open
                             :on-close on-close}]))]
-
-        [:div.selected-colors
+        [:div {:class (stl/css :selected-color-group)}
          (for [[index color] (d/enumerate (take 3 colors))]
            [:& color-row {:key (dm/str "color-" index)
                           :color color
@@ -313,9 +257,10 @@
                           :on-open on-open
                           :on-close on-close}])
          (when (and (false? @expand-color) (< 3 (count colors)))
-           [:div.expand-colors  {:on-click #(reset! expand-color true)}
-            [:span i/actions]
-            [:span.text (tr "workspace.options.more-colors")]])
+           [:button  {:class (stl/css :more-colors-btn)
+                      :on-click #(reset! expand-color true)}
+            (tr "workspace.options.more-colors")])
+
          (when @expand-color
            (for [[index color] (d/enumerate (drop 3 colors))]
              [:& color-row {:key (dm/str "color-" (:color color))
@@ -324,4 +269,4 @@
                             :select-only select-only
                             :on-change #(on-change %1 color %2)
                             :on-open on-open
-                            :on-close on-close}]))]]])))
+                            :on-close on-close}]))]])]))

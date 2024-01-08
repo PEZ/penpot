@@ -6,6 +6,7 @@
 
 (ns app.main.ui.settings.feedback
   "Feedback form."
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.spec :as us]
    [app.main.data.messages :as dm]
@@ -15,7 +16,7 @@
    [app.main.ui.components.forms :as fm]
    [app.util.dom :as dom]
    [app.util.i18n :as i18n :refer [tr]]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [cljs.spec.alpha :as s]
    [rumext.v2 :as mf]))
 
@@ -57,20 +58,21 @@
            (reset! loading true)
            (let [data (:clean-data @form)]
              (->> (rp/cmd! :send-user-feedback data)
-                  (rx/subs on-succes on-error)))))]
+                  (rx/subs! on-succes on-error)))))]
 
-    [:& fm/form {:class "feedback-form"
+    [:& fm/form {:class (stl/css :feedback-form)
                  :on-submit on-submit
                  :form form}
 
-     ;; --- Feedback section
-     [:h2.field-title (tr "feedback.title")]
-     [:p.field-text (tr "feedback.subtitle")]
+       ;; --- Feedback section
+     [:h2 {:class (stl/css :field-title)} (tr "feedback.title")]
+     [:p {:class (stl/css :field-text)} (tr "feedback.subtitle")]
 
-     [:div.fields-row
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input {:label (tr "feedback.subject")
-                    :name :subject}]]
-     [:div.fields-row
+                    :name :subject
+                    :show-success? true}]]
+     [:div {:class (stl/css :fields-row :description)}
       [:& fm/textarea
        {:label (tr "feedback.description")
         :name :content
@@ -82,26 +84,30 @@
 
      [:hr]
 
-     [:h2.field-title (tr "feedback.discourse-title")]
-     [:p.field-text (tr "feedback.discourse-subtitle1")]
+     [:h2 {:class (stl/css :field-title)} (tr "feedback.discourse-title")]
+     [:p {:class (stl/css :field-text)} (tr "feedback.discourse-subtitle1")]
 
-     [:a.btn-secondary.btn-large
-      {:href "https://community.penpot.app" :target "_blank"}
+     [:a
+      {:class (stl/css :btn-secondary :btn-large)
+       :href "https://community.penpot.app"
+       :target "_blank"}
       (tr "feedback.discourse-go-to")]
      [:hr]
 
-     [:h2.field-title (tr "feedback.twitter-title")]
-     [:p.field-text (tr "feedback.twitter-subtitle1")]
+     [:h2 {:class (stl/css :field-title)} (tr "feedback.twitter-title")]
+     [:p {:class (stl/css :field-text)} (tr "feedback.twitter-subtitle1")]
 
-     [:a.btn-secondary.btn-large
-      {:href "https://twitter.com/penpotapp" :target "_blank"}
+     [:a
+      {:class (stl/css :btn-secondary :btn-large)
+       :href "https://twitter.com/penpotapp"
+       :target "_blank"}
       (tr "feedback.twitter-go-to")]]))
 
 (mf/defc feedback-page
   []
   (mf/use-effect
-    #(dom/set-html-title (tr "title.settings.feedback")))
+   #(dom/set-html-title (tr "title.settings.feedback")))
 
-  [:div.dashboard-settings
-   [:div.form-container
+  [:div {:class (stl/css :dashboard-settings)}
+   [:div {:class (stl/css :form-container)}
     [:& feedback-form]]])

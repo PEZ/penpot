@@ -8,9 +8,11 @@
   (:require
    [app.common.logging :as log]
    [app.util.object :as obj]
-   [beicon.core :as rx]
+   [app.util.timers :as tm]
+   [beicon.v2.core :as rx]
+   [beicon.v2.operators :as rxo]
    [okulary.core :as l]
-   [potok.core :as ptk]))
+   [potok.v2.core :as ptk]))
 
 (log/set-level! :info)
 
@@ -41,7 +43,7 @@
                    (when (and *debug-events*
                               (ptk/event? e)
                               (not (debug-exclude-events (ptk/type e))))
-                     (.log js/console (str "[stream]: " (ptk/repr-event e)) )))))
+                     (.log js/console (str "[stream]: " (ptk/repr-event e)))))))
 
 (defonce state
   (ptk/store {:resolve ptk/resolve
@@ -64,7 +66,7 @@
           (->> stream
                (rx/filter (ptk/type? :app.main.data.workspace.changes/commit-changes))
                (rx/map #(-> % deref :hint-origin str))
-               (rx/dedupe))
+               (rx/pipe (rxo/distinct-contiguous)))
           (->> stream
                (rx/map ptk/type)
                (rx/filter #(contains? allowed %))
@@ -74,7 +76,7 @@
                       (> (count buffer) 20)
                       (pop)))
                   #queue [])
-         (rx/subs #(reset! buffer (vec %))))
+         (rx/subs! #(reset! buffer (vec %))))
     buffer))
 
 (defn emit!
@@ -85,6 +87,10 @@
   ([event & events]
    (apply ptk/emit! state (cons event events))
    nil))
+
+(defn async-emit!
+  [& params]
+  (tm/schedule #(apply emit! params)))
 
 (defonce ongoing-tasks (l/atom #{}))
 

@@ -5,12 +5,12 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.workspace.sidebar.assets.components
-  (:require-macros [app.main.style :as stl :refer [css]])
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.media :as cm]
-   [app.common.pages.helpers :as cph]
    [app.common.types.file :as ctf]
    [app.main.data.events :as ev]
    [app.main.data.modal :as modal]
@@ -31,11 +31,15 @@
    [app.util.dom :as dom]
    [app.util.dom.dnd :as dnd]
    [app.util.i18n :as i18n :refer [tr]]
-   ;; [app.util.timers :as tm]
    [cuerdas.core :as str]
    [okulary.core :as l]
-   [potok.core :as ptk]
+   [potok.v2.core :as ptk]
    [rumext.v2 :as mf]))
+
+(def drag-data* (atom {:local? false}))
+
+(defn set-drag-data! [data]
+  (reset! drag-data* data))
 
 (defn- get-component-root-and-container
   [file-id component components-v2]
@@ -55,17 +59,17 @@
 
     ;; NOTE: We don't schedule the thumbnail generation on idle right now
     ;; until we can queue and handle thumbnail batching properly.
-    #_(mf/with-effect []
-      (when-not (some? thumbnail-uri)
-        (tm/schedule-on-idle
-         #(st/emit! (dwl/update-component-thumbnail (:id component) file-id)))))
+#_(mf/with-effect []
+    (when-not (some? thumbnail-uri)
+      (tm/schedule-on-idle
+       #(st/emit! (dwl/update-component-thumbnail (:id component) file-id)))))
 
 
 (mf/defc components-item
   {::mf/wrap-props false}
   [{:keys [component renaming listing-thumbs? selected
            file-id on-asset-click on-context-menu on-drag-start do-rename
-           cancel-rename selected-full selected-paths]}]
+           cancel-rename selected-full selected-paths local]}]
   (let [item-ref       (mf/use-ref)
 
         dragging*      (mf/use-state false)
@@ -73,7 +77,6 @@
 
         read-only?     (mf/use-ctx ctx/workspace-read-only?)
         components-v2  (mf/use-ctx ctx/components-v2)
-        new-css-system (mf/use-ctx ctx/new-css-system)
         component-id   (:id component)
 
         visible?       (h/use-visible item-ref :once? true)
@@ -91,40 +94,45 @@
 
         on-component-click
         (mf/use-fn
-         (mf/deps component selected)
+         (mf/deps component-id on-asset-click)
          (fn [event]
            (dom/stop-propagation event)
            (on-asset-click component-id unselect-all event)))
 
         on-component-double-click
         (mf/use-fn
-         (mf/deps file-id component-id)
+         (mf/deps file-id component local)
          (fn [event]
            (dom/stop-propagation event)
-           (st/emit! (dw/go-to-main-instance file-id component-id))))
+           (if local
+             (st/emit! (dw/go-to-component component-id))
+             (st/emit! (dwl/nav-to-component-file file-id component)))))
 
         on-drop
         (mf/use-fn
-         (mf/deps component dragging* selected selected-full selected-paths)
+         (mf/deps component dragging* selected selected-full selected-paths local drag-data*)
          (fn [event]
-           (cmm/on-drop-asset event component dragging* selected selected-full
-                              selected-paths dwl/rename-component-and-main-instance)))
+           (when (and local (:local? @drag-data*))
+             (cmm/on-drop-asset event component dragging* selected selected-full
+                                selected-paths dwl/rename-component-and-main-instance))))
 
         on-drag-enter
         (mf/use-fn
-         (mf/deps component dragging* selected selected-paths)
+         (mf/deps component dragging* selected selected-paths local drag-data*)
          (fn [event]
-           (cmm/on-drag-enter-asset event component dragging* selected selected-paths)))
+           (when (and local (:local? @drag-data*))
+             (cmm/on-drag-enter-asset event component dragging* selected selected-paths))))
 
         on-drag-leave
         (mf/use-fn
-         (mf/deps dragging*)
+         (mf/deps dragging* local drag-data*)
          (fn [event]
-           (cmm/on-drag-leave-asset event dragging*)))
+           (when (and local (:local? @drag-data*))
+             (cmm/on-drag-leave-asset event dragging*))))
 
         on-component-drag-start
         (mf/use-fn
-         (mf/deps file-id component selected item-ref on-drag-start read-only?)
+         (mf/deps file-id component selected item-ref on-drag-start read-only? local)
          (fn [event]
            (if read-only?
              (dom/prevent-default event)
@@ -132,103 +140,60 @@
 
         on-context-menu
         (mf/use-fn
-         (mf/deps component-id)
+         (mf/deps on-context-menu component-id)
          (partial on-context-menu component-id))]
 
-    (if ^boolean new-css-system
-      [:div {:ref item-ref
-             :class (dom/classnames
-                     (css :selected) (contains? selected (:id component))
-                     (css :grid-cell) listing-thumbs?
-                     (css :enum-item) (not listing-thumbs?))
-             :id (dm/str "component-shape-id-" (:id component))
-             :draggable (not read-only?)
-             :on-click on-component-click
-             :on-double-click on-component-double-click
-             :on-context-menu on-context-menu
-             :on-drag-start on-component-drag-start
-             :on-drag-enter on-drag-enter
-             :on-drag-leave on-drag-leave
-             :on-drag-over dom/prevent-default
-             :on-drop on-drop}
-       (when (and (some? root-shape)
-                  (some? container))
-         [:*
+    [:div {:ref item-ref
+           :class (stl/css-case :selected (contains? selected (:id component))
+                                :grid-cell listing-thumbs?
+                                :enum-item (not listing-thumbs?))
+           :id (dm/str "component-shape-id-" (:id component))
+           :draggable (not read-only?)
+           :on-click on-component-click
+           :on-double-click on-component-double-click
+           :on-context-menu on-context-menu
+           :on-drag-start on-component-drag-start
+           :on-drag-enter on-drag-enter
+           :on-drag-leave on-drag-leave
+           :on-drag-over dom/prevent-default
+           :on-drop on-drop}
+     (when (and (some? root-shape)
+                (some? container))
+       [:*
+        (let [renaming? (= renaming (:id component))]
+          [:*
+           [:& editable-label
+            {:class (stl/css-case :cell-name listing-thumbs?
+                                  :item-name (not listing-thumbs?)
+                                  :editing renaming?)
+             :value (cfh/merge-path-item (:path component) (:name component))
+             :tooltip (cfh/merge-path-item (:path component) (:name component))
+             :display-value (:name component)
+             :editing renaming?
+             :disable-dbl-click true
+             :on-change do-rename
+             :on-cancel cancel-rename}]
+
+           (when ^boolean dragging?
+             [:div {:class (stl/css :dragging)}])])
+
+        (when visible?
           [:& cmm/component-item-thumbnail {:file-id file-id
-                                        :root-shape root-shape
-                                        :component component
-                                        :container container}]
-          (let [renaming? (= renaming (:id component))]
-            [:*
-             [:& editable-label
-              {:class (dom/classnames
-                       (css :cell-name) listing-thumbs?
-                       (css :item-name) (not listing-thumbs?)
-                       (css :editing) renaming?)
-               :value (cph/merge-path-item (:path component) (:name component))
-               :tooltip (cph/merge-path-item (:path component) (:name component))
-               :display-value (:name component)
-               :editing renaming?
-               :disable-dbl-click true
-               :on-change do-rename
-               :on-cancel cancel-rename}]
-
-             (when ^boolean dragging?
-               [:div {:class (dom/classnames (css :dragging) true)}])])])]
-
-      [:div {:ref item-ref
-             :class (dom/classnames
-                     :selected (contains? selected (:id component))
-                     :grid-cell listing-thumbs?
-                     :enum-item (not listing-thumbs?))
-             :id (dm/str "component-shape-id-" (:id component))
-             :draggable (not read-only?)
-             :on-click on-component-click
-             :on-double-click on-component-double-click
-             :on-context-menu on-context-menu
-             :on-drag-start on-component-drag-start
-             :on-drag-enter on-drag-enter
-             :on-drag-leave on-drag-leave
-             :on-drag-over dom/prevent-default
-             :on-drop on-drop}
-
-       (when (and (some? root-shape)
-                  (some? container))
-         [:*
-          (when visible?
-            [:& cmm/component-item-thumbnail {:file-id file-id
-                                          :root-shape root-shape
-                                          :component component
-                                          :container container}])
-          (let [renaming? (= renaming (:id component))]
-            [:*
-             [:& editable-label
-              {:class (dom/classnames
-                       :cell-name listing-thumbs?
-                       :item-name (not listing-thumbs?)
-                       :editing renaming?)
-               :value (cph/merge-path-item (:path component) (:name component))
-               :tooltip (cph/merge-path-item (:path component) (:name component))
-               :display-value (:name component)
-               :editing renaming?
-               :disable-dbl-click true
-               :on-change do-rename
-               :on-cancel cancel-rename}]
-
-             (when ^boolean dragging?
-               [:div.dragging])])])])))
+                                            :root-shape root-shape
+                                            :component component
+                                            :container container}])])]))
 
 (mf/defc components-group
   {::mf/wrap-props false}
   [{:keys [file-id prefix groups open-groups force-open? renaming listing-thumbs? selected on-asset-click
            on-drag-start do-rename cancel-rename on-rename-group on-group on-ungroup on-context-menu
-           selected-full]}]
+           selected-full local]}]
 
   (let [group-open?    (or ^boolean force-open?
                            ^boolean (get open-groups prefix (if (= prefix "") true false)))
-        new-css-system (mf/use-ctx ctx/new-css-system)
         dragging*      (mf/use-state false)
         dragging?      (deref dragging*)
+
 
         selected-paths (mf/with-memo [selected-full]
                          (into #{}
@@ -236,170 +201,101 @@
                                selected-full))
         on-drag-enter
         (mf/use-fn
-         (mf/deps dragging* prefix selected-paths)
+         (mf/deps dragging* prefix selected-paths local drag-data*)
          (fn [event]
-           (cmm/on-drag-enter-asset-group event dragging* prefix selected-paths)))
+           (when (and local (:local? @drag-data*))
+             (cmm/on-drag-enter-asset-group event dragging* prefix selected-paths))))
 
         on-drag-leave
         (mf/use-fn
-         (mf/deps dragging*)
+         (mf/deps dragging* local drag-data*)
          (fn [event]
-           (cmm/on-drag-leave-asset event dragging*)))
+           (when (and local (:local? @drag-data*))
+             (cmm/on-drag-leave-asset event dragging*))))
 
         on-drop
         (mf/use-fn
-         (mf/deps dragging* prefix selected-paths selected-full)
+         (mf/deps dragging* prefix selected-paths selected-full local drag-data*)
          (fn [event]
-           (cmm/on-drop-asset-group event dragging* prefix selected-paths selected-full dwl/rename-component-and-main-instance)))]
+           (when (and local (:local? @drag-data*))
+             (cmm/on-drop-asset-group event dragging* prefix selected-paths selected-full dwl/rename-component-and-main-instance))))]
 
-    (if ^boolean new-css-system
-      [:div {:class (dom/classnames (css :component-group) true)
-             :on-drag-enter on-drag-enter
-             :on-drag-leave on-drag-leave
-             :on-drag-over dom/prevent-default
-             :on-drop on-drop}
-       [:& grp/asset-group-title
-        {:file-id file-id
-         :section :components
-         :path prefix
-         :group-open? group-open?
-         :on-rename on-rename-group
-         :on-ungroup on-ungroup}]
-
-
-       (when group-open?
-         [:*
-          (let [components (get groups "" [])]
-            [:div {:class-name (dom/classnames
-                                (css :asset-grid) listing-thumbs?
-                                (css :asset-enum) (not listing-thumbs?)
-                                (css :drop-space) (and
-                                                   (empty? components)
-                                                   (some? groups)
-                                                   (not dragging?)))
-                   :on-drag-enter on-drag-enter
-                   :on-drag-leave on-drag-leave
-                   :on-drag-over dom/prevent-default
-                   :on-drop on-drop}
-
-             (when ^boolean dragging?
-               [:div {:class (dom/classnames (css :grid-placeholder) true)} "\u00A0"])
+    [:div {:class (stl/css :component-group)
+           :on-drag-enter on-drag-enter
+           :on-drag-leave on-drag-leave
+           :on-drag-over dom/prevent-default
+           :on-drop on-drop}
+     [:& grp/asset-group-title
+      {:file-id file-id
+       :section :components
+       :path prefix
+       :group-open? group-open?
+       :on-rename on-rename-group
+       :on-ungroup on-ungroup}]
 
 
-             (when (and (empty? components)
-                        (some? groups))
-               [:div {:class (dom/classnames (css :drop-space) true)}])
+     (when group-open?
+       [:*
+        (let [components (get groups "" [])]
+          [:div {:class-name (stl/css-case :asset-grid listing-thumbs?
+                                           :asset-enum (not listing-thumbs?)
+                                           :drop-space (and
+                                                        (empty? components)
+                                                        (some? groups)
+                                                        (not dragging?)
+                                                        local))
+                 :on-drag-enter on-drag-enter
+                 :on-drag-leave on-drag-leave
+                 :on-drag-over dom/prevent-default
+                 :on-drop on-drop}
 
-             (for [component components]
-               [:& components-item
-                {:component component
-                 :key (dm/str "component-" (:id component))
-                 :renaming renaming
-                 :listing-thumbs? listing-thumbs?
-                 :file-id file-id
-                 :selected selected
-                 :selected-full selected-full
-                 :selected-paths selected-paths
-                 :on-asset-click on-asset-click
-                 :on-context-menu on-context-menu
-                 :on-drag-start on-drag-start
-                 :on-group on-group
-                 :do-rename do-rename
-                 :cancel-rename cancel-rename}])])
-
-          (for [[path-item content] groups]
-            (when-not (empty? path-item)
-              [:& components-group {:file-id file-id
-                                    :key path-item
-                                    :prefix (cph/merge-path-item prefix path-item)
-                                    :groups content
-                                    :open-groups open-groups
-                                    :force-open? force-open?
-                                    :renaming renaming
-                                    :listing-thumbs? listing-thumbs?
-                                    :selected selected
-                                    :on-asset-click on-asset-click
-                                    :on-drag-start on-drag-start
-                                    :do-rename do-rename
-                                    :cancel-rename cancel-rename
-                                    :on-rename-group on-rename-group
-                                    :on-ungroup on-ungroup
-                                    :on-context-menu on-context-menu
-                                    :selected-full selected-full}]))])]
+           (when ^boolean dragging?
+             [:div {:class (stl/css :grid-placeholder)} "\u00A0"])
 
 
-      [:div {:on-drag-enter on-drag-enter
-             :on-drag-leave on-drag-leave
-             :on-drag-over dom/prevent-default
-             :on-drop on-drop}
+           (when (and (empty? components)
+                      (some? groups)
+                      local)
+             [:div {:class (stl/css :drop-space)}])
 
-       [:& grp/asset-group-title
-        {:file-id file-id
-         :section :components
-         :path prefix
-         :group-open? group-open?
-         :on-rename on-rename-group
-         :on-ungroup on-ungroup}]
+           (for [component components]
+             [:& components-item
+              {:component component
+               :key (dm/str "component-" (:id component))
+               :renaming renaming
+               :listing-thumbs? listing-thumbs?
+               :file-id file-id
+               :selected selected
+               :selected-full selected-full
+               :selected-paths selected-paths
+               :on-asset-click on-asset-click
+               :on-context-menu on-context-menu
+               :on-drag-start on-drag-start
+               :on-group on-group
+               :do-rename do-rename
+               :cancel-rename cancel-rename
+               :local local}])])
 
-       (when group-open?
-         [:*
-          (let [components (get groups "" [])]
-            [:div {:class-name (dom/classnames
-                                :asset-grid listing-thumbs?
-                                :big listing-thumbs?
-                                :asset-enum (not listing-thumbs?)
-                                :drop-space (and
-                                             (empty? components)
-                                             (some? groups)
-                                             (not dragging?)))
-                   :on-drag-enter on-drag-enter
-                   :on-drag-leave on-drag-leave
-                   :on-drag-over dom/prevent-default
-                   :on-drop on-drop}
-
-             (when ^boolean dragging?
-               [:div.grid-placeholder "\u00A0"])
-
-             (when (and (empty? components)
-                        (some? groups))
-               [:div.drop-space])
-
-             (for [component components]
-               [:& components-item
-                {:component component
-                 :key (dm/str "component-" (:id component))
-                 :renaming renaming
-                 :listing-thumbs? listing-thumbs?
-                 :file-id file-id
-                 :selected selected
-                 :selected-full selected-full
-                 :selected-paths selected-paths
-                 :on-asset-click on-asset-click
-                 :on-context-menu on-context-menu
-                 :on-drag-start on-drag-start
-                 :on-group on-group
-                 :do-rename do-rename
-                 :cancel-rename cancel-rename}])])
-
-          (for [[path-item content] groups]
-            (when-not (empty? path-item)
-              [:& components-group {:file-id file-id
-                                    :key path-item
-                                    :prefix (cph/merge-path-item prefix path-item)
-                                    :groups content
-                                    :open-groups open-groups
-                                    :force-open? force-open?
-                                    :renaming renaming
-                                    :listing-thumbs? listing-thumbs?
-                                    :selected selected
-                                    :on-asset-click on-asset-click
-                                    :on-drag-start on-drag-start
-                                    :do-rename do-rename
-                                    :cancel-rename cancel-rename
-                                    :on-rename-group on-rename-group
-                                    :on-ungroup on-ungroup
-                                    :on-context-menu on-context-menu
-                                    :selected-full selected-full}]))])])))
+        (for [[path-item content] groups]
+          (when-not (empty? path-item)
+            [:& components-group {:file-id file-id
+                                  :key path-item
+                                  :prefix (cfh/merge-path-item prefix path-item)
+                                  :groups content
+                                  :open-groups open-groups
+                                  :force-open? force-open?
+                                  :renaming renaming
+                                  :listing-thumbs? listing-thumbs?
+                                  :selected selected
+                                  :on-asset-click on-asset-click
+                                  :on-drag-start on-drag-start
+                                  :do-rename do-rename
+                                  :cancel-rename cancel-rename
+                                  :on-rename-group on-rename-group
+                                  :on-ungroup on-ungroup
+                                  :on-context-menu on-context-menu
+                                  :selected-full selected-full
+                                  :local local}]))])]))
 
 (mf/defc components-section
   {::mf/wrap-props false}
@@ -424,10 +320,10 @@
         menu-state               (mf/use-state cmm/initial-context-menu-state)
         read-only?               (mf/use-ctx ctx/workspace-read-only?)
         components-v2            (mf/use-ctx ctx/components-v2)
-        new-css-system           (mf/use-ctx ctx/new-css-system)
         toggle-list-style        (mf/use-ctx cmm/assets-toggle-list-style)
 
         selected                 (:components selected)
+
         selected-full            (into #{} (filter #(contains? selected (:id %))) components)
         multi-components?        (> (count selected) 1)
         multi-assets?            (or (seq (:graphics selected))
@@ -498,9 +394,11 @@
         (mf/use-fn
          (mf/deps selected on-clear-selection read-only?)
          (fn [component-id event]
+           (dom/stop-propagation event)
            (dom/prevent-default event)
            (let [pos (dom/get-client-position event)]
-             (when (and local? (not read-only?))
+
+             (when (not read-only?)
                (when-not (contains? selected component-id)
                  (on-clear-selection))
 
@@ -572,16 +470,23 @@
         (mf/use-fn
          (mf/deps file-id)
          (fn [component event]
+           ;; dnd api only allow to acces to the dataTransfer data on on-drop (https://html.spec.whatwg.org/dev/dnd.html#concept-dnd-p)
+           ;; We need to know if the dragged element is from the local library on on-drag-enter, so we need to keep the info elsewhere
+           (set-drag-data! {:local? local?})
+
            (dnd/set-data! event "penpot/component" {:file-id file-id
                                                     :component component})
            (dnd/set-allowed-effect! event "move")))
 
         on-show-main
         (mf/use-fn
-         (mf/deps current-component-id file-id)
+         (mf/deps current-component-id file-id local?)
          (fn [event]
            (dom/stop-propagation event)
-           (st/emit! (dw/go-to-main-instance file-id current-component-id))))
+           (if local?
+             (st/emit! (dw/go-to-component current-component-id))
+             (let [component (d/seek #(= (:id %) current-component-id) components)]
+               (st/emit! (dwl/nav-to-component-file file-id component))))))
 
         on-asset-click
         (mf/use-fn (mf/deps groups on-asset-click) (partial on-asset-click groups))]
@@ -591,38 +496,28 @@
                            :section :components
                            :assets-count (count components)
                            :open? open?}
-     (if ^boolean new-css-system
-       [:& cmm/asset-section-block {:role :title-button}
-        [:*
-         (when open?
-           [:div {:class (stl/css :listing-options)}
-            [:& radio-buttons {:selected (if listing-thumbs? "grid" "list")
-                               :on-change toggle-list-style
-                               :name "listing-style"}
-             [:& radio-button {:icon i/view-as-list-refactor
-                               :value "list"
-                               :id "opt-list"}]
-             [:& radio-button {:icon i/flex-grid-refactor
-                               :value "grid"
-                               :id "opt-grid"}]]])
+     [:& cmm/asset-section-block {:role :title-button}
+      [:*
+       (when open?
+         [:div {:class (stl/css :listing-options)}
+          [:& radio-buttons {:selected (if listing-thumbs? "grid" "list")
+                             :on-change toggle-list-style
+                             :name "listing-style"}
+           [:& radio-button {:icon i/view-as-list-refactor
+                             :value "list"
+                             :id "opt-list"}]
+           [:& radio-button {:icon i/flex-grid-refactor
+                             :value "grid"
+                             :id "opt-grid"}]]])
 
-         (when (and components-v2 (not read-only?) local?)
-           [:div {:on-click add-component
-                  :class (dom/classnames (css :add-component) true)}
-            i/add-refactor
-            [:& file-uploader {:accept cm/str-image-types
-                               :multi true
-                               :ref input-ref
-                               :on-selected on-file-selected}]])]]
-       (when local?
-         [:& cmm/asset-section-block {:role :title-button}
-          (when (and components-v2 (not read-only?))
-            [:div.assets-button {:on-click add-component}
-             i/plus
-             [:& file-uploader {:accept cm/str-image-types
-                                :multi true
-                                :ref input-ref
-                                :on-selected on-file-selected}]])]))
+       (when (and components-v2 (not read-only?) local?)
+         [:div {:on-click add-component
+                :class (stl/css :add-component)}
+          i/add-refactor
+          [:& file-uploader {:accept cm/str-image-types
+                             :multi true
+                             :ref input-ref
+                             :on-selected on-file-selected}]])]]
 
      [:& cmm/asset-section-block {:role :content}
       (when ^boolean open?
@@ -642,45 +537,34 @@
                               :on-group on-group
                               :on-ungroup on-ungroup
                               :on-context-menu on-context-menu
-                              :selected-full selected-full}])
-      (when ^boolean local?
-        [:& cmm/assets-context-menu
-         {:on-close on-close-menu
-          :state @menu-state
-          :options (if new-css-system
-                     [(when-not  (or multi-components? multi-assets?)
-                        {:option-name    (tr "workspace.assets.rename")
-                         :id             "assets-rename-component"
-                         :option-handler on-rename})
-                      (when-not multi-assets?
-                        {:option-name    (if components-v2
-                                           (tr "workspace.assets.duplicate-main")
-                                           (tr "workspace.assets.duplicate"))
-                         :id             "assets-duplicate-component"
-                         :option-handler on-duplicate})
+                              :selected-full selected-full
+                              :local ^boolean local?}])
 
-                      {:option-name    (tr "workspace.assets.delete")
-                       :id             "assets-delete-component"
-                       :option-handler on-delete}
-                      (when-not multi-assets?
-                        {:option-name   (tr "workspace.assets.group")
-                         :id             "assets-group-component"
-                         :option-handler on-group})
+      [:& cmm/assets-context-menu
+       {:on-close on-close-menu
+        :state @menu-state
+        :options [(when (and local? (not (or multi-components? multi-assets? read-only?)))
+                    {:option-name    (tr "workspace.assets.rename")
+                     :id             "assets-rename-component"
+                     :option-handler on-rename})
+                  (when (and local? (not (or multi-assets? read-only?)))
+                    {:option-name    (if components-v2
+                                       (tr "workspace.assets.duplicate-main")
+                                       (tr "workspace.assets.duplicate"))
+                     :id             "assets-duplicate-component"
+                     :option-handler on-duplicate})
 
-                      (when (and components-v2 (not multi-assets?))
-                        {:option-name   (tr "workspace.shape.menu.show-main")
-                         :id             "assets-show-main-component"
-                         :option-handler on-show-main})]
+                  (when (and local? (not read-only?))
+                    {:option-name    (tr "workspace.assets.delete")
+                     :id             "assets-delete-component"
+                     :option-handler on-delete})
+                  (when (and local? (not (or multi-assets? read-only?)))
+                    {:option-name   (tr "workspace.assets.group")
+                     :id             "assets-group-component"
+                     :option-handler on-group})
 
-                     [(when-not (or multi-components? multi-assets?)
-                        [(tr "workspace.assets.rename") on-rename])
-                      (when-not multi-assets?
-                        [(if components-v2
-                           (tr "workspace.assets.duplicate-main")
-                           (tr "workspace.assets.duplicate")) on-duplicate])
-                      [(tr "workspace.assets.delete") on-delete]
-                      (when-not multi-assets?
-                        [(tr "workspace.assets.group") on-group])
-                      (when (and components-v2 (not multi-assets?))
-                        [(tr "workspace.shape.menu.show-main") on-show-main])])}])]]))
+                  (when (and components-v2 (not multi-assets?))
+                    {:option-name   (tr "workspace.shape.menu.show-main")
+                     :id             "assets-show-main-component"
+                     :option-handler on-show-main})]}]]]))
 

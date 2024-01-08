@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.auth.recovery-request
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.spec :as us]
@@ -13,10 +14,9 @@
    [app.main.store :as st]
    [app.main.ui.components.forms :as fm]
    [app.main.ui.components.link :as lk]
-   [app.main.ui.icons :as i]
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.router :as rt]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [cljs.spec.alpha :as s]
    [rumext.v2 :as mf]))
 
@@ -76,15 +76,16 @@
 
     [:& fm/form {:on-submit on-submit
                  :form form}
-     [:div.fields-row
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input {:name :email
                     :label (tr "auth.email")
-                    :help-icon i/at
-                    :type "text"}]]
+                    :type "text"
+                    :class (stl/css :form-field)}]]
 
      [:> fm/submit-button*
       {:label (tr "auth.recovery-request-submit")
-       :data-test "recovery-resquest-submit"}]]))
+       :data-test "recovery-resquest-submit"
+       :class (stl/css :recover-btn)}]]))
 
 
 ;; --- Recovery Request Page
@@ -93,13 +94,14 @@
   [{:keys [params on-success-callback go-back-callback] :as props}]
   (let [default-go-back #(st/emit! (rt/nav :auth-login))
         go-back (or go-back-callback default-go-back)]
-    [:section.generic-form
-     [:div.form-container
-      [:h1 (tr "auth.recovery-request-title")]
-      [:div.subtitle (tr "auth.recovery-request-subtitle")]
-      [:& recovery-form {:params params :on-success-callback on-success-callback}]
-      [:div.links
-       [:div.link-entry
-        [:& lk/link {:action go-back
-                     :data-test "go-back-link"}
-         (tr "labels.go-back")]]]]]))
+    [:div {:class (stl/css :auth-form)}
+     [:h1 {:class (stl/css :auth-title)} (tr "auth.recovery-request-title")]
+     [:div {:class (stl/css :auth-subtitle)} (tr "auth.recovery-request-subtitle")]
+     [:hr {:class (stl/css :separator)}]
+
+     [:& recovery-form {:params params :on-success-callback on-success-callback}]
+
+     [:div {:class (stl/css :link-entry)}
+      [:& lk/link {:action go-back
+                   :data-test "go-back-link"}
+       (tr "labels.go-back")]]]))

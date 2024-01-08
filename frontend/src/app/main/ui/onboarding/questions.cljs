@@ -6,6 +6,7 @@
 
 (ns app.main.ui.onboarding.questions
   "External form for onboarding questions."
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
@@ -19,20 +20,21 @@
 
 (mf/defc step-container
   [{:keys [form step on-next on-prev children] :as props}]
+
   [:& fm/form {:form form :on-submit on-next}
-   [:div.step-header
-    [:div.step-number (str/ffmt "%/4" step)]]
+   [:div {:class (stl/css :paginator)} (str/ffmt "%/4" step)]
 
    children
-   [:div.buttons
-    [:div.step-next
-     [:> fm/submit-button*
-      {:label (if (< step 4) (tr "questions.next") (tr "questions.start"))
-       :class "step-next"}]]
+
+   [:div {:class (stl/css :action-buttons)}
 
     (when on-prev
-      [:div.step-prev
-       [:button {:on-click on-prev} (tr "questions.previous")]])]])
+      [:button {:class (stl/css :prev-button)
+                :on-click on-prev} (tr "questions.previous")])
+
+    [:> fm/submit-button*
+     {:label (if (< step 4) (tr "questions.next") (tr "questions.start"))
+      :class (stl/css :next-button)}]]])
 
 (s/def ::questions-form-step-1
   (s/keys :req-un [::planning]))
@@ -40,10 +42,11 @@
 (mf/defc step-1
   [{:keys [on-next form] :as props}]
   [:& step-container {:form form :step 1 :on-next on-next}
-   [:img.header-image {:src "images/form/use-for-1.png" :alt (tr "questions.lets-get-started")}]
-   [:h1 (tr "questions.lets-get-started")]
-   [:p.intro (tr "questions.your-feedback-will-help-us")]
-   [:h3 (tr "questions.questions-how-are-you-planning-to-use-penpot")]
+   [:img {:class (stl/css :header-image)
+          :src "images/form/use-for-1.png" :alt (tr "questions.lets-get-started")}]
+   [:h1 {:class (stl/css :modal-title)} (tr "questions.lets-get-started")]
+   [:p {:class (stl/css :modal-text)} (tr "questions.your-feedback-will-help-us")]
+   [:h3 {:class (stl/css :modal-subtitle)} (tr "questions.questions-how-are-you-planning-to-use-penpot")]
    [:& fm/select {:options [{:label (tr "questions.select-option") :value "" :key "questions-how-are-you-planning-to-use-penpot" :disabled true}
                             {:label (tr "questions.discover-more-about-penpot") :value "discover-more-about-penpot" :key "discover-more-about-penpot"}
                             {:label (tr "questions.test-penpot-to-see-if-its-a-fit-for-team") :value "test-penpot-to-see-if-its-a-fit-for-team"  :key "test-penpot-to-see-if-its-a-fit-for-team"}
@@ -61,29 +64,36 @@
 (mf/defc step-2
   [{:keys [on-next on-prev form] :as props}]
   [:& step-container {:form form :step 2 :on-next on-next :on-prev on-prev}
-   [:h3 (tr "questions.describe-your-experience-working-on")]
+   [:h3 {:class (stl/css :modal-subtitle)}
+    (tr "questions.describe-your-experience-working-on")]
 
-   [:div.section (tr "branding-illustrations-marketing-pieces")]
-   [:& fm/radio-buttons {:options [{:label (tr "questions.none") :value "none"}
-                                   {:label (tr "questions.some") :value "some"}
-                                   {:label (tr "questions.a-lot") :value "a-lot"}]
-                         :name :experience-branding-illustrations-marketing-pieces}]
+   [:div {:class (stl/css :modal-question)}
+    [:div {:class (stl/css :modal-text)}
+     (tr "branding-illustrations-marketing-pieces")]
+    [:& fm/radio-buttons {:options [{:label (tr "questions.none") :value "none"}
+                                    {:label (tr "questions.some") :value "some"}
+                                    {:label (tr "questions.a-lot") :value "a-lot"}]
+                          :name :experience-branding-illustrations-marketing-pieces}]]
 
-   [:div.section (tr "questions.interface-design-visual-assets-design-systems")]
-   [:& fm/radio-buttons {:options [{:label (tr "questions.none") :value "none"}
-                                   {:label (tr "questions.some") :value "some"}
-                                   {:label (tr "questions.a-lot") :value "a-lot"}]
-                         :name :experience-interface-design-visual-assets-design-systems}]
+   [:div {:class (stl/css :modal-question)}
+    [:div {:class (stl/css :modal-text)}
+     (tr "questions.interface-design-visual-assets-design-systems")]
+    [:& fm/radio-buttons {:options [{:label (tr "questions.none") :value "none"}
+                                    {:label (tr "questions.some") :value "some"}
+                                    {:label (tr "questions.a-lot") :value "a-lot"}]
+                          :name :experience-interface-design-visual-assets-design-systems}]]
 
-   [:div.section (tr "questions.wireframes-user-journeys-flows-navigation-trees")]
-   [:& fm/radio-buttons {:options [{:label (tr "questions.none") :value "none"}
-                                   {:label (tr "questions.some") :value "some"}
-                                   {:label (tr "questions.a-lot") :value "a-lot"}]
-                         :name :experience-interface-wireframes-user-journeys-flows-navigation-trees}]])
+   [:div {:class (stl/css :modal-question)}
+    [:div {:class (stl/css :modal-text)}
+     (tr "questions.wireframes-user-journeys-flows-navigation-trees")]
+    [:& fm/radio-buttons {:options [{:label (tr "questions.none") :value "none"}
+                                    {:label (tr "questions.some") :value "some"}
+                                    {:label (tr "questions.a-lot") :value "a-lot"}]
+                          :name :experience-interface-wireframes-user-journeys-flows-navigation-trees}]]])
 
 (s/def ::questions-form-step-3
   (s/keys :req-un [::experience-design-tool]
-    :opt-un[::experience-design-tool-other]))
+          :opt-un [::experience-design-tool-other]))
 
 (defn- step-3-form-validator
   [errors data]
@@ -105,7 +115,8 @@
                 (swap! form d/dissoc-in [:errors :experience-design-tool-other])))))]
 
     [:& step-container {:form form :step 3 :on-next on-next :on-prev on-prev}
-     [:h3 (tr "question.design-tool-more-experienced-with")]
+     [:h3 {:class (stl/css :modal-subtitle)}
+      (tr "question.design-tool-more-experienced-with")]
      [:& fm/radio-buttons {:options [{:label (tr "questions.figma") :value "figma" :image "images/form/figma.png"}
                                      {:label (tr "questions.sketch") :value "sketch" :image "images/form/sketch.png"}
                                      {:label (tr "questions.adobe-xd") :value "adobe-xd" :image "images/form/adobe-xd.png"}
@@ -115,13 +126,15 @@
                                      {:label (tr "questions.other") :value "other"}]
                            :name :experience-design-tool
                            :on-change on-design-tool-change}]
-     [:div.other
-      [:label (tr "questions.other")]
-      [:& fm/input {:name :experience-design-tool-other :label (tr "questions.other") :disabled (not= experience-design-tool "other")}]]]))
+
+     [:& fm/input {:name :experience-design-tool-other
+                   :placeholder (tr "questions.other")
+                   :label ""
+                   :disabled (not= experience-design-tool "other")}]]))
 
 (s/def ::questions-form-step-4
   (s/keys :req-un [::team-size ::role]
-    :opt-un [::role-other]))
+          :opt-un [::role-other]))
 
 (defn- step-4-form-validator
   [errors data]
@@ -143,7 +156,7 @@
                 (swap! form d/dissoc-in [:errors :role-other])))))]
 
     [:& step-container {:form form :step 4 :on-next on-next :on-prev on-prev}
-     [:h3 (tr "questions.role")]
+     [:h3 {:class (stl/css :modal-subtitle)} (tr "questions.role")]
      [:& fm/radio-buttons {:options [{:label (tr "questions.designer") :value "designer"}
                                      {:label (tr "questions.developer") :value "developer"}
                                      {:label (tr "questions.manager") :value "manager"}
@@ -153,20 +166,19 @@
                                      {:label (tr "questions.other") :value "other"}]
                            :name :role
                            :on-change on-role-change}]
-     [:div.other
-      [:label (tr "questions.other")]
-      [:& fm/input {:name :role-other :label (tr "questions.other") :disabled (not= role "other")}]]
+     [:& fm/input {:name :role-other :label "" :placeholder (tr "questions.other") :disabled (not= role "other")}]
 
-     [:h3 (tr "questions.team-size")]
-     [:& fm/select {:options [{:label (tr "questions.select-option") :value "" :key "team-size" :disabled true}
-                              {:label (tr "questions.more-than-50") :value "more-than-50" :key "more-than-50"}
-                              {:label (tr "questions.31-50") :value "31-50"  :key "31-50"}
-                              {:label (tr "questions.11-30") :value "11-30" :key "11-30"}
-                              {:label (tr "questions.2-10") :value "2-10" :key "2-10"}
-                              {:label (tr "questions.freelancer") :value "freelancer" :key "freelancer"}
-                              {:label (tr "questions.personal-project") :value "personal-project" :key "personal-project"}]
-                    :default ""
-                    :name :team-size}]]))
+     [:div {:class (stl/css :modal-question)}
+      [:h3 {:class (stl/css :modal-subtitle)} (tr "questions.team-size")]
+      [:& fm/select {:options [{:label (tr "questions.select-option") :value "" :key "team-size" :disabled true}
+                               {:label (tr "questions.more-than-50") :value "more-than-50" :key "more-than-50"}
+                               {:label (tr "questions.31-50") :value "31-50"  :key "31-50"}
+                               {:label (tr "questions.11-30") :value "11-30" :key "11-30"}
+                               {:label (tr "questions.2-10") :value "2-10" :key "2-10"}
+                               {:label (tr "questions.freelancer") :value "freelancer" :key "freelancer"}
+                               {:label (tr "questions.personal-project") :value "personal-project" :key "personal-project"}]
+                     :default ""
+                     :name :team-size}]]]))
 
 (mf/defc questions
   [{:keys []}]
@@ -177,48 +189,45 @@
         ;; Forms are initialized here because we can go back and forth between the steps
         ;; and we want to keep the filled info
         step-1-form (fm/use-form
-                      :initial {}
-                      :spec ::questions-form-step-1)
+                     :initial {}
+                     :spec ::questions-form-step-1)
         step-2-form (fm/use-form
-                      :initial {}
-                      :spec ::questions-form-step-2)
+                     :initial {}
+                     :spec ::questions-form-step-2)
         step-3-form (fm/use-form
-                      :initial {}
-                      :validators [step-3-form-validator]
-                      :spec ::questions-form-step-3)
+                     :initial {}
+                     :validators [step-3-form-validator]
+                     :spec ::questions-form-step-3)
 
         step-4-form (fm/use-form
-                      :initial {}
-                      :validators [step-4-form-validator]
-                      :spec ::questions-form-step-4)
+                     :initial {}
+                     :validators [step-4-form-validator]
+                     :spec ::questions-form-step-4)
 
         on-next
         (mf/use-fn
-          (fn [form]
-            (swap! step inc)
-            (swap! clean-data merge (:clean-data @form))))
+         (fn [form]
+           (swap! step inc)
+           (swap! clean-data merge (:clean-data @form))))
 
         on-prev
         (mf/use-fn
-          (fn []
-            (swap! step dec)))
+         (fn []
+           (swap! step dec)))
 
         on-submit
         (mf/use-fn
-          (mf/deps @clean-data)
-          (fn [form]
-            (let [questionnaire (merge @clean-data (:clean-data @form))]
-              (reset! clean-data questionnaire)
-              (st/emit! (du/mark-questions-as-answered questionnaire)))))]
+         (mf/deps @clean-data)
+         (fn [form]
+           (let [questionnaire (merge @clean-data (:clean-data @form))]
+             (reset! clean-data questionnaire)
+             (st/emit! (du/mark-questions-as-answered questionnaire)))))]
 
-    [:div.modal-wrapper.questions-form
-     [:div.modal-overlay
-      [:div.modal-container.onboarding.onboarding-v2 {:ref container}
-       [:img.deco.left {:src "images/deco-left.png" :border 0}]
-       [:img.deco.right {:src "images/deco-right.png" :border 0}]
-       [:div.signup-questions
-        (case @step
-          1 [:& step-1 {:on-next on-next :on-prev on-prev :form step-1-form}]
-          2 [:& step-2 {:on-next on-next :on-prev on-prev :form step-2-form}]
-          3 [:& step-3 {:on-next on-next :on-prev on-prev :form step-3-form}]
-          4 [:& step-4 {:on-next on-submit :on-prev on-prev :form step-4-form}])]]]]))
+    [:div {:class (stl/css :modal-overlay)}
+     [:div {:class (stl/css :modal-container)
+            :ref container}
+      (case @step
+        1 [:& step-1 {:on-next on-next :on-prev on-prev :form step-1-form}]
+        2 [:& step-2 {:on-next on-next :on-prev on-prev :form step-2-form}]
+        3 [:& step-3 {:on-next on-next :on-prev on-prev :form step-3-form}]
+        4 [:& step-4 {:on-next on-submit :on-prev on-prev :form step-4-form}])]]))

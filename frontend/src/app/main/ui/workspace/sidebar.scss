@@ -32,18 +32,16 @@ $width-settings-bar-max: $s-500;
     left: 0;
     width: 100%;
     height: $s-12;
-    border-top: 2px solid var(--color-background-secondary);
-    background-color: var(--color-background-primary);
+    border-top: $s-2 solid var(--resize-area-border-color);
+    background-color: var(--resize-area-background-color);
     cursor: ns-resize;
-    &:hover {
-      border-color: var(--color-background-quaternary);
-    }
   }
   .settings-bar-inside {
     display: grid;
     grid-template-columns: 100%;
     grid-template-rows: 100%;
     height: calc(100vh - $s-52);
+    overflow: hidden;
     .tabs-wrapper {
       .layers-tab {
         display: grid;
@@ -56,13 +54,15 @@ $width-settings-bar-max: $s-500;
   }
 }
 .tab-spacing {
-  margin: $s-4 $s-12 0 $s-12;
+  margin: $s-4 $s-8 0 $s-8;
 }
 .right-settings-bar {
   grid-area: right-sidebar;
   width: $width-settings-bar;
   background-color: var(--panel-background-color);
   height: 100%;
+  display: flex;
+  flex-direction: column;
   &.not-expand {
     max-width: $width-settings-bar;
   }

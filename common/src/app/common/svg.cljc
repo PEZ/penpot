@@ -6,12 +6,9 @@
 
 (ns app.common.svg
   (:require
-   #?(:cljs ["./svg/optimizer.js" :as svgo])
    #?(:clj  [clojure.xml :as xml]
       :cljs [tubax.core :as tubax])
-   #?(:clj [integrant.core :as ig])
-   #?(:clj [app.common.jsrt :as jsrt])
-   #?(:clj [app.common.logging :as l])
+   #?(:cljs ["./svg/optimizer.js" :as svgo])
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.geom.matrix :as gmt]
@@ -118,8 +115,7 @@
     :tspan
     :use
     :view
-    :vkern
-    })
+    :vkern})
 
 ;; https://www.w3.org/TR/SVG11/attindex.html
 (def svg-attr-list
@@ -683,7 +679,7 @@
      ;; Removed this warning because slows a lot rendering with big svgs
      #_(let [filtered-props (->> attrs (remove known-property?) (map first))]
          (when (seq filtered-props)
-           (.warn js/console "Unknown properties: " (str/join ", " filtered-props  ))))
+           (.warn js/console "Unknown properties: " (str/join ", " filtered-props))))
 
      (into {}
            (comp (filter known-property?)
@@ -743,7 +739,7 @@
 
           node-defs (->> rec-result (map first) (reduce merge current-node-defs))]
 
-      [ node-defs node ])))
+      [node-defs node])))
 
 (defn find-attr-references [attrs]
   (->> attrs
@@ -1051,22 +1047,7 @@
                   (conj {:href (or (:href attrs) (:xlink:href attrs))
                          :width (d/parse-integer (:width attrs) 0)
                          :height (d/parse-integer (:height attrs) 0)})))]
-    (reduce-nodes redfn [] svg-data )))
-
-#?(:cljs
-   (defn optimize
-     ([input] (optimize input nil))
-     ([input options]
-      (svgo/optimize input (clj->js options))))
-   :clj
-   (defn optimize
-     [pool data]
-     (dm/assert! "expected a valid pool" (jsrt/pool? pool))
-     (dm/assert! "expect data to be a string" (string? data))
-     (jsrt/run! pool
-                (fn [context]
-                  (jsrt/set! context "svgData" data)
-                  (jsrt/eval! context "penpotSvgo.optimize(svgData, {})")))))
+    (reduce-nodes redfn [] svg-data)))
 
 #?(:clj
    (defn- secure-parser-factory
@@ -1091,15 +1072,9 @@
              (dm/with-open [istream (IOUtils/toInputStream text "UTF-8")]
                (xml/parse istream secure-parser-factory)))))
 
-#?(:clj
-   (defmethod ig/init-key ::optimizer
-     [_ _]
-     (l/info :hint "initializing svg optimizer pool")
-     (let [init (jsrt/resource->source "app/common/svg/optimizer.js")]
-       (jsrt/pool :init init))))
-
-#?(:clj
-   (defmethod ig/halt-key! ::optimizer
-     [_ pool]
-     (l/info :hint "stopping svg optimizer pool")
-     (.close ^java.lang.AutoCloseable pool)))
+;; FIXME pass correct plugin set
+#?(:cljs
+   (defn optimize
+     ([input] (optimize input nil))
+     ([input options]
+      (svgo/optimize input (clj->js options)))))

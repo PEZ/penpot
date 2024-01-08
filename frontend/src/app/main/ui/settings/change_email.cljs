@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.settings.change-email
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dma]
@@ -18,7 +19,7 @@
    [app.main.ui.icons :as i]
    [app.main.ui.messages :as msgs]
    [app.util.i18n :as i18n :refer [tr]]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [cljs.spec.alpha :as s]
    [rumext.v2 :as mf]))
 
@@ -85,50 +86,53 @@
         (mf/use-callback
          (mf/deps profile)
          (partial on-submit profile))
-                                     
+
         on-email-change
         (mf/use-callback
-          (fn [_ _]
-            (let [different-emails-error? (= (dma/get-in @form [:errors :email-2 :code]) :different-emails)
-                  email-1                 (dma/get-in @form [:clean-data :email-1])
-                  email-2                 (dma/get-in @form [:clean-data :email-2])]
-              (println "different-emails-error?" (and different-emails-error? (= email-1 email-2)))
-              (when (and different-emails-error? (= email-1 email-2))
-                (swap! form d/dissoc-in [:errors :email-2])))))]
+         (fn [_ _]
+           (let [different-emails-error? (= (dma/get-in @form [:errors :email-2 :code]) :different-emails)
+                 email-1                 (dma/get-in @form [:clean-data :email-1])
+                 email-2                 (dma/get-in @form [:clean-data :email-2])]
+             (println "different-emails-error?" (and different-emails-error? (= email-1 email-2)))
+             (when (and different-emails-error? (= email-1 email-2))
+               (swap! form d/dissoc-in [:errors :email-2])))))]
 
-    [:div.modal-overlay
-     [:div.modal-container.change-email-modal.form-container
+    [:div {:class (stl/css :modal-overlay)}
+     [:div {:class (stl/css :modal-container)}
       [:& fm/form {:form form
                    :on-submit on-submit}
 
-       [:div.modal-header
-        [:div.modal-header-title
-         [:h2 {:data-test "change-email-title"}
-          (tr "modals.change-email.title")]]
-        [:div.modal-close-button
-         {:on-click on-close} i/close]]
+       [:div {:class (stl/css :modal-header)}
+        [:h2 {:class (stl/css :modal-title)
+              :data-test "change-email-title"}
+         (tr "modals.change-email.title")]
+        [:button {:class (stl/css :modal-close-btn)
+                  :on-click on-close} i/close-refactor]]
 
-       [:div.modal-content
+       [:div {:class (stl/css :modal-content)}
         [:& msgs/inline-banner
          {:type :info
           :content (tr "modals.change-email.info" (:email profile))}]
 
-        [:div.fields-container
-         [:div.fields-row
-          [:& fm/input {:type "email"
-                        :name :email-1
-                        :label (tr "modals.change-email.new-email")
-                        :trim true
-                        :on-change-value on-email-change}]]
-         [:div.fields-row
-          [:& fm/input {:type "email"
-                        :name :email-2
-                        :label (tr "modals.change-email.confirm-email")
-                        :trim true
-                        :on-change-value on-email-change}]]]]
+        [:div {:class (stl/css :fields-row)}
+         [:& fm/input {:type "email"
+                       :name :email-1
+                       :label (tr "modals.change-email.new-email")
+                       :trim true
+                       :show-success? true
+                       :on-change-value on-email-change}]]
 
-       [:div.modal-footer
-        [:div.action-buttons {:data-test "change-email-submit"}
+        [:div {:class (stl/css :fields-row)}
+         [:& fm/input {:type "email"
+                       :name :email-2
+                       :label (tr "modals.change-email.confirm-email")
+                       :trim true
+                       :show-success? true
+                       :on-change-value on-email-change}]]]
+
+       [:div {:class (stl/css :modal-footer)}
+        [:div {:class (stl/css :action-buttons)
+               :data-test "change-email-submit"}
          [:> fm/submit-button*
           {:label (tr "modals.change-email.submit")}]]]]]]))
 

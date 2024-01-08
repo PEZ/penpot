@@ -8,7 +8,6 @@
   (:require
    [app.common.data :as d]
    [app.common.files.migrations :as cpm]
-   [app.common.pages :as cp]
    [app.common.uuid :as uuid]
    [clojure.pprint :refer [pprint]]
    [clojure.test :as t]))
@@ -72,14 +71,14 @@
                  :version 7}
 
         expect   (-> data
-                    (update-in [:pages-index page-id :objects] dissoc
-                               (uuid/custom 1 2)
-                               (uuid/custom 1 3)
-                               (uuid/custom 1 4))
-                    (update-in [:pages-index page-id :objects (uuid/custom 1 1) :shapes]
-                               (fn [shapes]
-                                 (let [id (uuid/custom 1 2)]
-                                   (into [] (remove #(= id %)) shapes)))))
+                     (update-in [:pages-index page-id :objects] dissoc
+                                (uuid/custom 1 2)
+                                (uuid/custom 1 3)
+                                (uuid/custom 1 4))
+                     (update-in [:pages-index page-id :objects (uuid/custom 1 1) :shapes]
+                                (fn [shapes]
+                                  (let [id (uuid/custom 1 2)]
+                                    (into [] (remove #(= id %)) shapes)))))
 
         res     (cpm/migrate-data data 8)]
 
@@ -87,5 +86,4 @@
     ;; (pprint expect)
 
     (t/is (= (dissoc expect :version)
-             (dissoc res :version)))
-    ))
+             (dissoc res :version)))))

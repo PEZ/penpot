@@ -21,10 +21,11 @@
    [app.main.data.preview :as dp]
    [app.main.data.viewer.shortcuts]
    [app.main.data.workspace :as dw]
-   [app.main.data.workspace.changes :as dwc]
+   [app.main.data.workspace.changes :as dch]
    [app.main.data.workspace.path.shortcuts]
    [app.main.data.workspace.selection :as dws]
    [app.main.data.workspace.shortcuts]
+   [app.main.errors :as errors]
    [app.main.features :as features]
    [app.main.repo :as rp]
    [app.main.store :as st]
@@ -33,10 +34,10 @@
    [app.util.http :as http]
    [app.util.object :as obj]
    [app.util.timers :as timers]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [cljs.pprint :refer [pprint]]
    [cuerdas.core :as str]
-   [potok.core :as ptk]
+   [potok.v2.core :as ptk]
    [promesa.core :as p]))
 
 (l/set-level! :debug)
@@ -288,7 +289,7 @@
          (rx/filter ptk/event?)
          (rx/filter (fn [s] (and (dbg/enabled? :events)
                                  (not (debug-exclude-events (ptk/type s))))))
-         (rx/subs #(println "[stream]: " (ptk/repr-event %))))))
+         (rx/subs! #(println "[stream]: " (ptk/repr-event %))))))
 
 (defn ^:export apply-changes
   "Takes a Transit JSON changes"
@@ -296,7 +297,7 @@
 
   (let [file-id (:current-file-id @st/state)
         changes (t/decode-str changes*)]
-    (st/emit! (dwc/commit-changes {:redo-changes changes
+    (st/emit! (dch/commit-changes {:redo-changes changes
                                    :undo-changes []
                                    :save-undo? true
                                    :file-id file-id}))))
@@ -370,6 +371,9 @@
   [read-only?]
   (st/emit! (dw/set-workspace-read-only read-only?)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; REPAIR & VALIDATION
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Validation and repair
 
@@ -378,48 +382,61 @@
   ([shape-id]
    (let [file      (assoc (get @st/state :workspace-file)
                           :data (get @st/state :workspace-data))
-         libraries (get @st/state :workspace-libraries)
+         libraries (get @st/state :workspace-libraries)]
 
-         errors    (if shape-id
-                     (let [page (dm/get-in file [:data :pages-index (get @st/state :current-page-id)])]
-                       (cfv/validate-shape (uuid shape-id) file page libraries))
-                     (cfv/validate-file file libraries))]
+     (try
+       (->> (if-let [shape-id (some-> shape-id parse-uuid)]
+              (let [page (dm/get-in file [:data :pages-index (get @st/state :current-page-id)])]
+                (cfv/validate-shape (uuid shape-id) file page libraries))
+              (cfv/validate-file file libraries))
+            (group-by :code)
+            (clj->js))
+       (catch :default cause
+         (errors/print-error! cause))))))
 
-     (clj->js (d/group-by :code errors)))))
-
-;; --- Repair file
+(defn ^:export validate-schema
+  []
+  (try
+    (-> (get @st/state :workspace-file)
+        (assoc :data (get @st/state :workspace-data))
+        (cfv/validate-file-schema!))
+    (catch :default cause
+      (errors/print-error! cause))))
 
 (defn ^:export repair
-  []
-  (let [file      (assoc (get @st/state :workspace-file)
-                         :data (get @st/state :workspace-data))
-        libraries (get @st/state :workspace-libraries)
-        errors    (cfv/validate-file file libraries)]
+  [reload?]
+  (st/emit!
+   (ptk/reify ::repair-current-file
+     ptk/EffectEvent
+     (effect [_ state _]
+       (let [features (features/get-team-enabled-features state)
+             sid      (:session-id state)
 
-    (l/dbg :hint "repair current file" :errors (count errors))
+             file     (get state :workspace-file)
+             fdata    (get state :workspace-data)
 
-    (st/emit!
-     (ptk/reify ::repair-current-file
-       ptk/WatchEvent
-       (watch [_ state _]
-         (let [features  (features/get-team-enabled-features state)
-               sid       (:session-id state)
-               file      (get state :workspace-file)
-               file-data (get state :workspace-data)
-               libraries (get state :workspace-libraries)
+             file     (assoc file :data fdata)
+             libs     (get state :workspace-libraries)
 
-               changes   (-> (cfr/repair-file file-data libraries errors)
-                             (get :redo-changes))
+             errors   (cfv/validate-file file libs)
+             _        (l/dbg :hint "repair current file" :errors (count errors))
 
-               params    {:id (:id file)
-                          :revn (:revn file)
-                          :session-id sid
-                          :changes changes
-                          :features features
-                          :skip-validate true}]
+             changes  (cfr/repair-file file libs errors)
 
-           (->> (rp/cmd! :update-file params)
-                (rx/tap #(dom/reload-current-window)))))))))
+             params    {:id (:id file)
+                        :revn (:revn file)
+                        :session-id sid
+                        :changes changes
+                        :features features
+                        :skip-validate true}]
+
+
+         (->> (rp/cmd! :update-file params)
+              (rx/subs! (fn [_]
+                          (when reload?
+                            (dom/reload-current-window)))
+                        (fn [cause]
+                          (errors/print-error! cause)))))))))
 
 (defn ^:export fix-orphan-shapes
   []
@@ -446,13 +463,13 @@
                       :query {:file-id file-id}})
          (rx/map http/conditional-decode-transit)
          (rx/mapcat rp/handle-response)
-         (rx/subs (fn [result]
-                    (let [result (map (fn [row]
-                                        (update row :id str))
-                                      result)]
-                      (js/console.table (clj->js result))))
-                  (fn [cause]
-                    (js/console.log "EE:" cause))))
+         (rx/subs! (fn [result]
+                     (let [result (map (fn [row]
+                                         (update row :id str))
+                                       result)]
+                       (js/console.table (clj->js result))))
+                   (fn [cause]
+                     (js/console.log "EE:" cause))))
     nil))
 
 (defn ^:export take-snapshot
@@ -464,10 +481,10 @@
                       :body (http/transit-data {:file-id file-id :label label})})
          (rx/map http/conditional-decode-transit)
          (rx/mapcat rp/handle-response)
-         (rx/subs (fn [{:keys [id]}]
-                    (println "Snapshot saved:" (str id)))
-                  (fn [cause]
-                    (js/console.log "EE:" cause))))))
+         (rx/subs! (fn [{:keys [id]}]
+                     (println "Snapshot saved:" (str id)))
+                   (fn [cause]
+                     (js/console.log "EE:" cause))))))
 
 (defn ^:export restore-snapshot
   [id file-id]
@@ -479,8 +496,8 @@
                         :body (http/transit-data {:file-id file-id :id id})})
            (rx/map http/conditional-decode-transit)
            (rx/mapcat rp/handle-response)
-           (rx/subs (fn [_]
-                      (println "Snapshot restored " id)
-                      #_(.reload js/location))
-                    (fn [cause]
-                      (js/console.log "EE:" cause)))))))
+           (rx/subs! (fn [_]
+                       (println "Snapshot restored " id)
+                       #_(.reload js/location))
+                     (fn [cause]
+                       (js/console.log "EE:" cause)))))))

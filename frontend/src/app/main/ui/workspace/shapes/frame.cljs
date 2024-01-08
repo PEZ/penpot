@@ -8,21 +8,21 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
-   [app.common.geom.rect :as grc]
-   [app.common.geom.shapes :as gsh]
-   [app.common.pages.helpers :as cph]
+   [app.common.files.helpers :as cfh]
+   [app.common.geom.shapes.bounds :as gsb]
+   [app.common.math :as mth]
    [app.common.thumbnails :as thc]
    [app.main.data.workspace.state-helpers :as wsh]
    [app.main.data.workspace.thumbnails :as dwt]
    [app.main.refs :as refs]
    [app.main.store :as st]
    [app.main.ui.context :as ctx]
-   [app.main.ui.shapes.embed :as embed]
    [app.main.ui.shapes.frame :as frame]
    [app.main.ui.shapes.shape :refer [shape-container]]
    [app.main.ui.workspace.shapes.common :refer [check-shape-props]]
    [app.main.ui.workspace.shapes.frame.dynamic-modifiers :as fdm]
    [app.util.debug :as dbg]
+   [app.util.dom :as dom]
    [app.util.timers :as tm]
    [rumext.v2 :as mf]))
 
@@ -42,9 +42,8 @@
                          (refs/children-objects shape-id))
             childs     (mf/deref childs-ref)]
 
-        [:& (mf/provider embed/context) {:value true}
-         [:& shape-container {:shape shape :ref ref :disable-shadows? (cph/is-direct-child-of-root? shape)}
-          [:& frame-shape {:shape shape :childs childs}]]]))))
+        [:& shape-container {:shape shape :ref ref :disable-shadows? (cfh/is-direct-child-of-root? shape)}
+         [:& frame-shape {:shape shape :childs childs}]]))))
 
 (defn check-props
   [new-props old-props]
@@ -98,12 +97,7 @@
             container-ref  (mf/use-ref nil)
             content-ref    (mf/use-ref nil)
 
-            ;; FIXME: apply specific rendering optimizations separating to a component
-            bounds         (if (:show-content shape)
-                             (let [ids      (cph/get-children-ids objects frame-id)
-                                   children (sequence (keep (d/getf objects)) ids)]
-                               (gsh/shapes->rect (cons shape children)))
-                             (-> shape :points grc/points->rect))
+            bounds         (gsb/get-object-bounds objects shape)
 
             x              (dm/get-prop bounds :x)
             y              (dm/get-prop bounds :y)
@@ -113,37 +107,76 @@
             thumbnail-uri* (mf/with-memo [file-id page-id frame-id]
                              (let [object-id (thc/fmt-object-id file-id page-id frame-id "frame")]
                                (refs/workspace-thumbnail-by-id object-id)))
-            thumbnail-uri (mf/deref thumbnail-uri*)
+            thumbnail-uri  (mf/deref thumbnail-uri*)
 
             modifiers-ref  (mf/with-memo [frame-id]
                              (refs/workspace-modifiers-by-frame-id frame-id))
             modifiers      (mf/deref modifiers-ref)
 
-            hidden?        (true? (:hidden shape))]
+            hidden?        (true? (:hidden shape))
+            content-visible? (or (not ^boolean thumbnail?) (not ^boolean thumbnail-uri))
+
+            tries-ref      (mf/use-ref 0)
+            imposter-ref   (mf/use-ref nil)
+            imposter-loaded-ref (mf/use-ref false)
+            task-ref       (mf/use-ref nil)
+
+            on-load        (mf/use-fn (fn []
+                                        (mf/set-ref-val! tries-ref 0)
+                                        (mf/set-ref-val! imposter-loaded-ref true)))
+            on-error       (mf/use-fn
+                            (fn []
+                              (let [current-tries (mf/ref-val tries-ref)
+                                    new-tries     (mf/set-ref-val! tries-ref (inc current-tries))
+                                    delay-in-ms   (* (mth/pow 2 new-tries) 1000)
+                                    retry-fn      (fn []
+                                                    (let [imposter (mf/ref-val imposter-ref)]
+                                                      (when-not (nil? imposter)
+                                                        (dom/set-attribute! imposter "href" thumbnail-uri))))]
+                                (when (< new-tries 8)
+                                  (mf/set-ref-val! task-ref (tm/schedule delay-in-ms retry-fn))))))]
 
         ;; NOTE: we don't add deps because we want this to be executed
         ;; once on mount with only referenced the initial data
         (mf/with-effect []
           (when-not (some? thumbnail-uri)
             (tm/schedule-on-idle
-             #(st/emit! (dwt/request-thumbnail file-id page-id frame-id "frame")))))
+             #(st/emit! (dwt/request-thumbnail file-id page-id frame-id "frame"))))
+          #(when-let [task (mf/ref-val task-ref)]
+             (d/close! task)))
+
+        (mf/with-effect [thumbnail-uri]
+          (when-let [task (mf/ref-val task-ref)]
+            (d/close! task)))
 
         (fdm/use-dynamic-modifiers objects (mf/ref-val content-ref) modifiers)
 
-        [:& shape-container {:shape shape}
+        [:& shape-container {:shape shape :disable-shadows? thumbnail?}
          [:g.frame-container
           {:id (dm/str "frame-container-" frame-id)
            :key "frame-container"
            :opacity (when ^boolean hidden? 0)}
 
+           ;; When there is no thumbnail, we generate a empty rect.
+          (when (and (not ^boolean content-visible?) (not (mf/ref-val imposter-loaded-ref)))
+            [:g.frame-placeholder
+             [:rect {:x x
+                     :y y
+                     :width width
+                     :height height
+                     :fill "url(#frame-placeholder-gradient)"}]])
+
           [:g.frame-imposter
            [:image.thumbnail-bitmap
             {:x x
              :y y
+             :ref imposter-ref
              :width width
              :height height
              :href thumbnail-uri
-             :style {:display (when-not ^boolean thumbnail? "none")}}]
+             :on-load on-load
+             :on-error on-error
+             :style {:display (when-not (and ^boolean thumbnail? ^boolean thumbnail-uri) "none")}}]
 
            ;; Render border around image when we are debugging
            ;; thumbnails.
@@ -156,8 +189,7 @@
                      :stroke-width 2}])]
 
           ;; When thumbnail is disabled.
-          (when (or (not ^boolean thumbnail?)
-                    (not ^boolean thumbnail-uri))
+          (when ^boolean content-visible?
             [:g.frame-content
              {:id (dm/str "frame-content-" frame-id)
               :ref container-ref}

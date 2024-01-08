@@ -17,13 +17,15 @@
    [app.util.http :as http]
    [app.util.object :as obj]
    [app.util.webapi :as wapi]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [cuerdas.core :as str]))
 
-(log/set-level! :trace)
+(log/set-level! :info)
 
 (declare send-success!)
 (declare send-failure!)
+
+(defonce data-uri-cache (js/Map.))
 
 (defonce parent-origin
   (dm/str cf/public-uri))
@@ -86,22 +88,35 @@
 (defn- fetch-as-data-uri
   "Fetches a URL as a Data URI."
   [uri]
-  (->> (http/send! {:uri uri
-                    :response-type :blob
-                    :method :get
-                    :mode :cors
-                    :omit-default-headers true})
-       (rx/map :body)
-       (rx/mapcat wapi/read-file-as-data-url)))
+  (if (.has data-uri-cache uri)
+    (let [blob (.get data-uri-cache uri)]
+      (rx/from (.text blob)))
+    (->> (http/send! {:uri uri
+                      :response-type :blob
+                      :method :get
+                      :mode :cors
+                      :omit-default-headers true})
+         (rx/catch (fn [cause]
+                     (log/error :hint "fetching data uri"
+                                :cause cause)
+                     (rx/of nil)))
+         (rx/mapcat (fn [response]
+                      (if (nil? response)
+                        (rx/of uri)
+                        (->> (rx/of (:body response))
+                             (rx/mapcat wapi/read-file-as-data-url)
+                             (rx/tap (fn [data-uri] (.set data-uri-cache uri (wapi/create-blob data-uri "text/plain")))))))))))
 
 (defn- svg-update-image!
   "Updates an image in an SVG to a Data URI."
   [image]
   (if-let [href (dom/get-attribute image "href")]
-    (->> (fetch-as-data-uri href)
-         (rx/map (fn [url]
-                   (dom/set-attribute! image "href" url)
-                   image)))
+    (if (str/starts-with? href "data:")
+      (rx/of image)
+      (->> (fetch-as-data-uri href)
+           (rx/map (fn [url]
+                     (dom/set-attribute! image "href" url)
+                     image))))
     (rx/empty)))
 
 (defn- svg-resolve-images!
@@ -119,19 +134,43 @@
     (dom/append-child! style (dom/create-text svg styles))
     (dom/append-child! doc style)))
 
-(defn- svg-resolve-styles!
-  "Resolves all fonts in an SVG to Data URIs."
-  [svg styles]
+(defn- svg-resolve-external-resources
+  "Resolves all external resources in an SVG to Data URIs."
+  [styles]
   (->> (rx/from (re-seq #"url\((https?://[^)]+)\)" styles))
        (rx/map second)
        (rx/mapcat (fn [url]
-                      (->> (fetch-as-data-uri url)
-                           (rx/map (fn [uri] [url uri])))))
-
+                    (->> (fetch-as-data-uri url)
+                         (rx/map (fn [uri] [url uri])))))
        (rx/reduce (fn [styles [url uri]]
                     (str/replace styles url uri))
-                  styles)
+                  styles)))
+
+(defn- svg-resolve-styles!
+  "Resolves all fonts in an SVG to Data URIs."
+  [svg styles]
+  (->> (svg-resolve-external-resources styles)
        (rx/tap (partial svg-add-style! svg))
+       (rx/ignore)))
+
+(defn- svg-resolve-inline-styles!
+  "Resolves all inline styles in an SVG to Data URIs."
+  [svg]
+  (->> (rx/from (dom/query-all svg "[style]"))
+       (rx/mapcat (fn [node]
+                    (let [styles (dom/get-attribute node "style")]
+                      (->> (svg-resolve-external-resources styles)
+                           (rx/tap (fn [styles] (dom/set-attribute! node "style" styles)))))))
+       (rx/ignore)))
+
+(defn- svg-resolve-style-elements!
+  "Resolves all style elements in an SVG to Data URIs."
+  [svg]
+  (->> (rx/from (dom/query-all svg "style"))
+       (rx/mapcat (fn [node]
+                    (let [styles (dom/get-text node)]
+                      (->> (svg-resolve-external-resources styles)
+                           (rx/tap (fn [styles] (dom/set-text! node styles)))))))
        (rx/ignore)))
 
 (defn- svg-resolve-all!
@@ -140,6 +179,8 @@
   (rx/concat
    (svg-resolve-images! svg)
    (svg-resolve-styles! svg styles)
+   (svg-resolve-inline-styles! svg)
+   (svg-resolve-style-elements! svg)
    (rx/of svg)))
 
 (defn- svg-parse
@@ -190,8 +231,8 @@
          (rx/map wapi/create-uri)
          (rx/mapcat (fn [uri]
                       (->> (create-image uri)
-                           (rx/mapcat #(wapi/create-image-bitmap % #js {:resizeWidth width
-                                                                        :resizeQuality quality}))
+                           (rx/mapcat #(wapi/create-image-bitmap-with-workaround % #js {:resizeWidth width
+                                                                                        :resizeQuality quality}))
                            (rx/tap #(wapi/revoke-uri uri))))))))
 
 (defn- render-blob
@@ -220,8 +261,8 @@
         (when (and (some? payload)
                    (= scope "penpot/rasterizer"))
           (->> (render payload)
-               (rx/subs (partial send-success! id)
-                        (partial send-failure! id))))))))
+               (rx/subs! (partial send-success! id)
+                         (partial send-failure! id))))))))
 
 (defn- listen
   "Initializes the listener for messages from the main thread."
@@ -236,7 +277,9 @@
                      :scope "penpot/rasterizer"
                      :payload payload}]
     (when-not (identical? js/window js/parent)
-      (.postMessage js/parent message parent-origin))))
+      (if (instance? js/ImageBitmap payload)
+        (.postMessage js/parent message parent-origin #js [payload])
+        (.postMessage js/parent message parent-origin)))))
 
 (defn- send-success!
   "Sends a success message."

@@ -56,11 +56,11 @@
         is-owner (boolean (some :is-owner rows))
         is-admin (boolean (some :is-admin rows))
         can-edit (boolean (some :can-edit rows))]
-     (when (seq rows)
-       {:is-owner is-owner
-        :is-admin (or is-owner is-admin)
-        :can-edit (or is-owner is-admin can-edit)
-        :can-read true})))
+    (when (seq rows)
+      {:is-owner is-owner
+       :is-admin (or is-owner is-admin)
+       :can-edit (or is-owner is-admin can-edit)
+       :can-read true})))
 
 (def has-admin-permissions?
   (perms/make-admin-predicate-fn get-permissions))
@@ -82,9 +82,8 @@
 
 (defn decode-row
   [{:keys [features] :as row}]
-  (when row
-    (cond-> row
-      features (assoc :features (db/decode-pgarray features #{})))))
+  (cond-> row
+    (some? features) (assoc :features (db/decode-pgarray features #{}))))
 
 ;; --- Query: Teams
 
@@ -138,17 +137,29 @@
 (declare get-team)
 
 (def ^:private schema:get-team
-  [:map {:title "get-team"}
-   [:id ::sm/uuid]])
+  [:and
+   [:map {:title "get-team"}
+    [:id {:optional true} ::sm/uuid]
+    [:file-id {:optional true} ::sm/uuid]]
+
+   [:fn (fn [params]
+          (or (contains? params :id)
+              (contains? params :file-id)))]])
 
 (sv/defmethod ::get-team
   {::doc/added "1.17"
    ::sm/params schema:get-team}
-  [cfg {:keys [::rpc/profile-id id]}]
-  (db/tx-run! cfg #(get-team % :profile-id profile-id :team-id id)))
+  [{:keys [::db/pool]} {:keys [::rpc/profile-id id file-id]}]
+  (get-team pool :profile-id profile-id :team-id id :file-id file-id))
 
 (defn get-team
   [conn & {:keys [profile-id team-id project-id file-id] :as params}]
+
+  (dm/assert!
+   "connection or pool is mandatory"
+   (or (db/connection? conn)
+       (db/pool? conn)))
+
   (dm/assert!
    "profile-id is mandatory"
    (uuid? profile-id))
@@ -181,7 +192,6 @@
     (when-not result
       (ex/raise :type :not-found
                 :code :team-does-not-exist))
-
     (-> result
         (decode-row)
         (process-permissions))))
@@ -364,8 +374,8 @@
   (let [conn    (db/get-connection cfg-or-conn)
         team    (create-team* conn params)
         params  (assoc params
-                        :team-id (:id team)
-                        :role :owner)
+                       :team-id (:id team)
+                       :role :owner)
         project (create-team-default-project conn params)]
     (create-team-role conn params)
     (assoc team :default-project-id (:id project))))
@@ -651,7 +661,7 @@
 
 (defn update-team-photo
   [{:keys [::db/pool ::sto/storage] :as cfg} {:keys [profile-id team-id] :as params}]
-  (let [team  (get-team cfg :profile-id profile-id :team-id team-id)
+  (let [team  (get-team pool :profile-id profile-id :team-id team-id)
         photo (profile/upload-photo cfg params)]
 
     (db/with-atomic [conn pool]
@@ -663,8 +673,8 @@
 
       ;; Save new photo
       (db/update! pool :team
-        {:photo-id (:id photo)}
-        {:id team-id})
+                  {:photo-id (:id photo)}
+                  {:id team-id})
 
       (assoc team :photo-id (:id photo)))))
 
@@ -725,7 +735,8 @@
                           (role->params role))]
 
         ;; Insert the invited member to the team
-        (db/insert! conn :team-profile-rel params {:on-conflict-do-nothing true})
+        (db/insert! conn :team-profile-rel params
+                    {::db/on-conflict-do-nothing? true})
 
         ;; If profile is not yet verified, mark it as verified because
         ;; accepting an invitation link serves as verification.
@@ -952,5 +963,6 @@
 
       (let [invitation (db/delete! conn :team-invitation
                                    {:team-id team-id
-                                    :email-to (str/lower email)})]
+                                    :email-to (str/lower email)}
+                                   {::db/return-keys true})]
         (rph/wrap nil {::audit/props {:invitation-id (:id invitation)}})))))

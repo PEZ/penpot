@@ -8,8 +8,8 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.rect :as grc]
-   [app.common.pages.helpers :as cph]
    [app.main.ui.context :as muc]
    [cuerdas.core :as str]
    [rumext.v2 :as mf]))
@@ -55,13 +55,13 @@
     (let [mask       (unchecked-get props "mask")
           render-id  (mf/use-ctx muc/render-id)
 
-          svg-text?  (and ^boolean (cph/text-shape? mask)
+          svg-text?  (and ^boolean (cfh/text-shape? mask)
                           ^boolean (some? (:position-data mask)))
 
           points     (dm/get-prop mask :points)
           points-str (mf/with-memo [points]
-                        (->> (map point->str points)
-                             (str/join " ")))
+                       (->> (map point->str points)
+                            (str/join " ")))
 
           bounds     (mf/with-memo [points]
                        (grc/points->rect points))

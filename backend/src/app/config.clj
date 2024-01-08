@@ -203,9 +203,11 @@
 (s/def ::storage-assets-s3-bucket ::us/string)
 (s/def ::storage-assets-s3-region ::us/keyword)
 (s/def ::storage-assets-s3-endpoint ::us/string)
+(s/def ::storage-assets-s3-io-threads ::us/integer)
 (s/def ::telemetry-uri ::us/string)
 (s/def ::telemetry-with-taiga ::us/boolean)
 (s/def ::tenant ::us/string)
+(s/def ::svgo-max-procs ::us/integer)
 
 (s/def ::config
   (s/keys :opt-un [::secret-key
@@ -320,11 +322,14 @@
                    ::storage-assets-s3-bucket
                    ::storage-assets-s3-region
                    ::storage-assets-s3-endpoint
+                   ::storage-assets-s3-io-threads
                    ::telemetry-enabled
                    ::telemetry-uri
                    ::telemetry-referer
                    ::telemetry-with-taiga
-                   ::tenant]))
+                   ::tenant
+
+                   ::svgo-max-procs]))
 
 (def default-flags
   [:enable-backend-api-doc

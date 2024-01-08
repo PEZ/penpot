@@ -8,9 +8,9 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.helpers :as cph]
    [app.common.svg.path.command :as upc]
    [app.common.uuid :as uuid]))
 
@@ -34,6 +34,17 @@
   ([state page-id]
    (dm/get-in state [:viewer :pages page-id :objects])))
 
+(defn lookup-library-objects
+  [state file-id page-id]
+  (dm/get-in state [:workspace-libraries file-id :data :pages-index page-id :objects]))
+
+(defn lookup-objects
+  [state file-id page-id]
+  (let [current-file? (= file-id (:current-file-id state))]
+    (if ^boolean current-file?
+      (lookup-page-objects state page-id)
+      (lookup-library-objects state file-id page-id))))
+
 (defn lookup-page-options
   ([state]
    (lookup-page-options state (:current-page-id state)))
@@ -53,7 +64,7 @@
              (and (contains? objects id)
                   (or (not omit-blocked?)
                       (not (get-in objects [id :blocked] false)))))]
-     (let [selected (->> selected (cph/clean-loops objects))]
+     (let [selected (->> selected (cfh/clean-loops objects))]
        (into (d/ordered-set)
              (filter selectable?)
              selected)))))
@@ -126,7 +137,7 @@
   [parent-id state]
   (let [objects   (lookup-page-objects state)
         modifiers (:workspace-modifiers state)
-        children-ids (cph/get-children-ids objects parent-id)
+        children-ids (cfh/get-children-ids objects parent-id)
         children
         (-> (select-keys objects children-ids)
             (update-vals

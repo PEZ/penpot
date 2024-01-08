@@ -14,16 +14,19 @@
    [app.common.svg.path.command :as upc]
    [app.common.svg.path.subpath :as ups]
    [app.main.data.workspace.path.common :as common]
-   [app.main.streams :as ms]
-   [potok.core :as ptk]))
+   [app.util.mouse :as mse]
+   [potok.v2.core :as ptk]))
 
-(defn end-path-event? [event]
-  (or (= (ptk/type event) ::common/finish-path)
-      (= (ptk/type event) :app.main.data.workspace.path.shortcuts/esc-pressed)
-      (= :app.main.data.workspace.common/clear-edition-mode (ptk/type event))
-      (= :app.main.data.workspace/finalize-page (ptk/type event))
-      (= event :interrupt) ;; ESC
-      (ms/mouse-double-click? event)))
+(defn end-path-event?
+  [event]
+  (let [type (ptk/type event)]
+    (or (= type ::common/finish-path)
+        (= type :app.main.data.workspace.path.shortcuts/esc-pressed)
+        (= type :app.main.data.workspace.common/clear-edition-mode)
+        (= type :app.main.data.workspace/finalize-page)
+        (= event :interrupt) ;; ESC
+        (and ^boolean (mse/mouse-event? event)
+             ^boolean (mse/mouse-double-click-event? event)))))
 
 (defn content-center
   [content]
@@ -128,7 +131,7 @@
     (let [;; To match the angle, the angle should be matching (angle between points 180deg)
           angle-handlers (angle-points node handler opposite)
 
-          match-angle? (and match-angle? (<= (mth/abs (- 180 angle-handlers) ) 0.1))
+          match-angle? (and match-angle? (<= (mth/abs (- 180 angle-handlers)) 0.1))
 
           ;; To match distance the distance should be matching
           match-distance? (and match-distance? (mth/almost-zero? (- (gpt/distance node handler)

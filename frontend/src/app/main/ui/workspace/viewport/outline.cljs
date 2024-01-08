@@ -9,8 +9,8 @@
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.exceptions :as ex]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.helpers :as cph]
    [app.common.types.container :as ctn]
    [app.main.refs :as refs]
    [app.main.ui.hooks :as hooks]
@@ -43,7 +43,7 @@
         selrect   (dm/get-prop shape :selrect)
         type      (dm/get-prop shape :type)
         content   (get shape :content)
-        path?     (cph/path-shape? shape)
+        path?     (cfh/path-shape? shape)
 
         path-data
         (mf/with-memo [path? content]
@@ -51,7 +51,7 @@
             (d/nilv (ex/ignoring (upf/format-path content)) "")))
 
         border-attrs
-        (attrs/get-border-radius shape)
+        (attrs/get-border-props shape)
 
         outline-type
         (case type
@@ -90,8 +90,7 @@
                   :height h
                   :rx (obj/get border-attrs "rx")
                   :ry (obj/get border-attrs "ry")
-                  :d  (obj/get border-attrs "d")})))
-        ]
+                  :d  (obj/get border-attrs "d")})))]
 
     [:> outline-type props]))
 

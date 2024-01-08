@@ -7,15 +7,14 @@
 (ns app.main.ui.shapes.frame
   (:require
    [app.common.data.macros :as dm]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.rect :as grc]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.helpers :as cph]
    [app.common.types.shape.layout :as ctl]
    [app.config :as cf]
    [app.main.ui.context :as muc]
    [app.main.ui.shapes.attrs :as attrs]
    [app.main.ui.shapes.custom-stroke :refer [shape-fills shape-strokes]]
-   [app.main.ui.shapes.grid-layout-viewer :refer [grid-layout-viewer]]
    [app.util.debug :as dbg]
    [app.util.object :as obj]
    [rumext.v2 :as mf]))
@@ -32,7 +31,7 @@
   {::mf/wrap-props false}
   [props]
   (let [shape (unchecked-get props "shape")]
-    (when (and ^boolean (cph/frame-shape? shape)
+    (when (and ^boolean (cfh/frame-shape? shape)
                (not ^boolean (:show-content shape)))
 
       (let [render-id (unchecked-get props "render-id")
@@ -42,8 +41,9 @@
             h         (dm/get-prop shape :height)
             t         (gsh/transform-str shape)
 
-            props     (mf/with-memo [shape render-id]
-                        (-> (attrs/get-style-props shape render-id)
+            props     (mf/with-memo [shape]
+                        (-> #js {}
+                            (attrs/add-border-props! shape)
                             (obj/merge! #js {:x x :y y :width w :height h :transform t})))
 
             path?     (some? (.-d props))]
@@ -73,8 +73,9 @@
 
         show-content? (get shape :show-content)
 
-        props         (mf/with-memo [shape render-id]
-                        (-> (attrs/get-style-props shape render-id)
+        props         (mf/with-memo [shape]
+                        (-> #js {}
+                            (attrs/add-border-props! shape)
                             (obj/merge!
                              #js {:x x
                                   :y y
@@ -165,19 +166,14 @@
     [props]
     (let [shape         (unchecked-get props "shape")
           childs        (unchecked-get props "childs")
-          is-component? (mf/use-ctx muc/is-component?)
           childs        (cond-> childs
                           (ctl/any-layout? shape)
-                          (cph/sort-layout-children-z-index))]
+                          (cfh/sort-layout-children-z-index))]
 
       [:> frame-container props
        [:g.frame-children {:opacity (:opacity shape)}
         (for [item childs]
           (let [id (dm/get-prop item :id)]
             (when (some? id)
-              [:& shape-wrapper {:key (dm/str id) :shape item}])))]
-
-       (when (and ^boolean is-component?
-                  ^boolean (empty? childs))
-         [:& grid-layout-viewer {:shape shape :childs childs}])])))
+              [:& shape-wrapper {:key (dm/str id) :shape item}])))]])))
 

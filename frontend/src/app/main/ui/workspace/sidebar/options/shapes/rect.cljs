@@ -46,7 +46,7 @@
         is-grid-parent*           (mf/use-memo (mf/deps ids) #(refs/grid-layout-child? ids))
         is-grid-parent?           (mf/deref is-grid-parent*)
 
-        is-layout-child-absolute? (ctl/layout-absolute? shape)
+        is-layout-child-absolute? (ctl/item-absolute? shape)
 
         parents-by-ids*           (mf/use-memo (mf/deps ids) #(refs/parents-by-ids ids))
         parents                   (mf/deref parents-by-ids*)]
@@ -59,6 +59,11 @@
                         :type type
                         :values measure-values
                         :shape shape}]
+
+     (when (or (not ^boolean is-layout-child?) ^boolean is-layout-child-absolute?)
+       [:& constraints-menu {:ids ids
+                             :values constraint-values}])
+
      [:& layout-container-menu
       {:type type
        :ids ids
@@ -79,13 +84,6 @@
          :is-flex-parent? is-flex-parent?
          :is-grid-parent? is-grid-parent?
          :shape shape}])
-
-     (when (or (not ^boolean is-layout-child?)
-               ^boolean is-layout-child-absolute?)
-       [:& constraints-menu {:ids ids
-                             :values constraint-values}])
-
-
 
      [:& fill-menu {:ids ids
                     :type type

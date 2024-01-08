@@ -261,15 +261,17 @@
         (make-rect minx miny (- maxx minx) (- maxy miny))))))
 
 (defn center->rect
-  [point w h]
-  (when (some? point)
-    (let [x (dm/get-prop point :x)
-          y (dm/get-prop point :y)]
-      (when (d/num? x y w h)
-        (make-rect (- x (/ w 2))
-                   (- y (/ h 2))
-                   w
-                   h)))))
+  ([point size]
+   (center->rect point size size))
+  ([point w h]
+   (when (some? point)
+     (let [x (dm/get-prop point :x)
+           y (dm/get-prop point :y)]
+       (when (d/num? x y w h)
+         (make-rect (- x (/ w 2))
+                    (- y (/ h 2))
+                    w
+                    h))))))
 
 (defn s=
   [a b]
@@ -351,3 +353,19 @@
                      (mth/max by1 y1)
                      (mth/min bx2 x2)
                      (mth/min by2 y2)))))
+(defn fix-aspect-ratio
+  [bounds aspect-ratio]
+  (if aspect-ratio
+    (let [width (dm/get-prop bounds :width)
+          height (dm/get-prop bounds :height)
+          target-height (* width aspect-ratio)
+          target-width (* height (/ 1 aspect-ratio))]
+      (cond-> bounds
+        (> target-height height)
+        (-> (assoc :height target-height)
+            (update :y - (/ (- target-height height) 2)))
+
+        (< target-height height)
+        (-> (assoc :width target-width)
+            (update :x - (/ (- target-width width) 2)))))
+    bounds))

@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.auth.register
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.spec :as us]
@@ -18,17 +19,18 @@
    [app.main.ui.components.link :as lk]
    [app.main.ui.icons :as i]
    [app.main.ui.messages :as msgs]
-   [app.util.i18n :refer [tr]]
+   [app.util.i18n :refer [tr tr-html]]
    [app.util.router :as rt]
-   [beicon.core :as rx]
+   [beicon.v2.core :as rx]
    [cljs.spec.alpha :as s]
    [rumext.v2 :as mf]))
 
 (mf/defc demo-warning
   [_]
-  [:& msgs/inline-banner
-   {:type :warning
-    :content (tr "auth.demo-warning")}])
+  [:div {:class (stl/css :banner)}
+   [:& msgs/inline-banner
+    {:type :warning
+     :content (tr "auth.demo-warning")}]])
 
 ;; --- PAGE: Register
 
@@ -105,29 +107,32 @@
              (->> (rp/cmd! :prepare-register-profile cdata)
                   (rx/map #(merge % params))
                   (rx/finalize #(reset! submitted? false))
-                  (rx/subs
+                  (rx/subs!
                    on-success
                    (partial handle-prepare-register-error form))))))]
 
 
-    [:& fm/form {:on-submit on-submit
-                 :form form}
-     [:div.fields-row
+    [:& fm/form {:on-submit on-submit :form form}
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input {:type "email"
                     :name :email
-                    :help-icon i/at
                     :label (tr "auth.email")
-                    :data-test "email-input"}]]
-     [:div.fields-row
+                    :data-test "email-input"
+                    :show-success? true
+                    :class (stl/css :form-field)}]]
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input {:name :password
                     :hint (tr "auth.password-length-hint")
                     :label (tr "auth.password")
-                    :type "password"}]]
+                    :show-success? true
+                    :type "password"
+                    :class (stl/css :form-field)}]]
 
      [:> fm/submit-button*
       {:label (tr "auth.register-submit")
        :disabled @submitted?
-       :data-test "register-form-submit"}]]))
+       :data-test "register-form-submit"
+       :class (stl/css :register-btn)}]]))
 
 
 (mf/defc register-methods
@@ -135,36 +140,25 @@
   [:*
    (when login/show-alt-login-buttons?
      [:*
-      [:span.separator
-       [:span.line]
-       [:span.text (tr "labels.continue-with")]
-       [:span.line]]
-
-      [:& login/login-buttons {:params params}]
-
-      (when (or (contains? cf/flags :login)
-                (contains? cf/flags :login-with-ldap))
-        [:span.separator
-         [:span.line]
-         [:span.text (tr "labels.or")]
-         [:span.line]])])
-
+      [:hr {:class (stl/css :separator)}]
+      [:& login/login-buttons {:params params}]])
+   [:hr {:class (stl/css :separator)}]
    [:& register-form {:params params :on-success-callback on-success-callback}]])
 
 (mf/defc register-page
   [{:keys [params] :as props}]
-  [:div.form-container
-
-   [:h1 {:data-test "registration-title"} (tr "auth.register-title")]
-   [:div.subtitle (tr "auth.register-subtitle")]
+  [:div {:class (stl/css :auth-form)}
+   [:h1 {:class (stl/css :auth-title)
+         :data-test "registration-title"} (tr "auth.register-title")]
+   [:div {:class (stl/css :auth-subtitle)} (tr "auth.register-subtitle")]
 
    (when (contains? cf/flags :demo-warning)
      [:& demo-warning])
 
    [:& register-methods {:params params}]
 
-   [:div.links
-    [:div.link-entry
+   [:div {:class (stl/css :links)}
+    [:div {:class (stl/css :link-entry :account)}
      [:span (tr "auth.already-have-account") " "]
 
      [:& lk/link {:action  #(st/emit! (rt/nav :auth-login {} params))
@@ -172,7 +166,7 @@
       (tr "auth.login-here")]]
 
     (when (contains? cf/flags :demo-users)
-      [:div.link-entry
+      [:div {:class (stl/css :link-entry :demo-users)}
        [:span (tr "auth.create-demo-profile") " "]
        [:& lk/link {:action  #(st/emit! (du/create-demo-profile))}
         (tr "auth.create-demo-account")]])]])
@@ -237,51 +231,58 @@
            (let [params (:clean-data @form)]
              (->> (rp/cmd! :register-profile params)
                   (rx/finalize #(reset! submitted? false))
-                  (rx/subs on-success
-                           (partial handle-register-error form))))))]
+                  (rx/subs! on-success
+                            (partial handle-register-error form))))))]
 
-    [:& fm/form {:on-submit on-submit
-                 :form form}
-     [:div.fields-row
+    [:& fm/form {:on-submit on-submit :form form}
+     [:div {:class (stl/css :fields-row)}
       [:& fm/input {:name :fullname
                     :label (tr "auth.fullname")
-                    :type "text"}]]
+                    :type "text"
+                    :show-success? true
+                    :class (stl/css :form-field)}]]
 
      (when (contains? cf/flags :terms-and-privacy-checkbox)
-       [:div.fields-row.input-visible.accept-terms-and-privacy-wrapper
-        [:& fm/input {:name :accept-terms-and-privacy
-                      :class "check-primary"
-                      :type "checkbox"}
-         [:span
-          (tr "auth.terms-privacy-agreement")]]
-        [:div.auth-links
-         [:a {:href "https://penpot.app/terms" :target "_blank"} (tr "auth.terms-of-service")]
-         [:span ",\u00A0"]
-         [:a {:href "https://penpot.app/privacy" :target "_blank"} (tr "auth.privacy-policy")]]])
+       (let [terms-label
+             (mf/html
+              [:& tr-html
+               {:tag-name "div"
+                :label "auth.terms-privacy-agreement-md"
+                :params [cf/terms-of-service-uri cf/privacy-policy-uri]}])]
+         [:div {:class (stl/css :fields-row :input-visible :accept-terms-and-privacy-wrapper)}
+          [:& fm/input {:name :accept-terms-and-privacy
+                        :class "check-primary"
+                        :type "checkbox"
+                        :label terms-label}]]))
 
      [:> fm/submit-button*
       {:label (tr "auth.register-submit")
-       :disabled @submitted?}]]))
+       :disabled @submitted?
+       :class (stl/css :register-btn)}]]))
 
 
 (mf/defc register-validate-page
   [{:keys [params] :as props}]
-  [:div.form-container
-   [:h1 {:data-test "register-title"} (tr "auth.register-title")]
-   [:div.subtitle (tr "auth.register-subtitle")]
+  [:div {:class (stl/css :auth-form)}
+   [:h1 {:class (stl/css :auth-title)
+         :data-test "register-title"} (tr "auth.register-title")]
+   [:div {:class (stl/css :auth-subtitle)} (tr "auth.register-subtitle")]
+
+   [:hr {:class (stl/css :separator)}]
 
    [:& register-validate-form {:params params}]
 
-   [:div.links
-    [:div.link-entry
+   [:div {:class (stl/css :links)}
+    [:div {:class (stl/css :link-entry :go-back)}
      [:& lk/link {:action  #(st/emit! (rt/nav :auth-register {} {}))}
       (tr "labels.go-back")]]]])
 
 (mf/defc register-success-page
   [{:keys [params] :as props}]
-  [:div.form-container
-   [:div.notification-icon i/icon-verify]
-   [:div.notification-text (tr "auth.verification-email-sent")]
-   [:div.notification-text-email (:email params "")]
-   [:div.notification-text (tr "auth.check-your-email")]])
+  [:div {:class (stl/css :auth-form :register-success)}
+   [:div {:class (stl/css :notification-icon)} i/icon-verify]
+   [:div {:class (stl/css :notification-text)} (tr "auth.verification-email-sent")]
+   [:div {:class (stl/css :notification-text-email)} (:email params "")]
+   [:div {:class (stl/css :notification-text)} (tr "auth.check-your-email")]])
+
 

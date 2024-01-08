@@ -8,15 +8,16 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.focus :as cpf]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.rect :as grc]
    [app.common.geom.shapes :as gsh]
-   [app.common.pages.focus :as cpf]
-   [app.common.pages.helpers :as cph]
    [app.common.types.component :as ctk]
    [app.common.types.shape-tree :as ctt]
    [app.common.uuid :as uuid]
    [app.main.data.shortcuts :as dsc]
    [app.main.data.workspace :as dw]
+   [app.main.data.workspace.grid-layout.shortcuts :as gsc]
    [app.main.data.workspace.path.shortcuts :as psc]
    [app.main.data.workspace.shortcuts :as wsc]
    [app.main.data.workspace.text.shortcuts :as tsc]
@@ -30,7 +31,9 @@
    [app.util.debug :as dbg]
    [app.util.dom :as dom]
    [app.util.globals :as globals]
-   [beicon.core :as rx]
+   [app.util.keyboard :as kbd]
+   [beicon.v2.core :as rx]
+   [beicon.v2.operators :as rxo]
    [goog.events :as events]
    [rumext.v2 :as mf])
   (:import goog.events.EventType))
@@ -98,14 +101,57 @@
        (when (not= @cursor new-cursor)
          (reset! cursor new-cursor))))))
 
-(defn setup-keyboard [alt? mod? space? z? shift?]
-  (hooks/use-stream ms/keyboard-alt #(reset! alt? %))
-  (hooks/use-stream ms/keyboard-mod #(do
-                                       (reset! mod? %)
-                                       (when-not % (reset! z? false)))) ;; In mac after command+z there is no event for the release of the z key
-  (hooks/use-stream ms/keyboard-space #(reset! space? %))
-  (hooks/use-stream ms/keyboard-z #(reset! z? %))
-  (hooks/use-stream ms/keyboard-shift #(reset! shift? %)))
+(defn setup-keyboard
+  [alt* mod* space* z* shift*]
+  (let [kbd-zoom-s
+        (mf/with-memo []
+          (->> ms/keyboard
+               (rx/filter kbd/key-down-event?)
+               (rx/filter kbd/mod-event?)
+               (rx/filter (fn [kevent]
+                            (or ^boolean (kbd/minus? kevent)
+                                ^boolean (kbd/underscore? kevent)
+                                ^boolean (kbd/equals? kevent)
+                                ^boolean (kbd/plus? kevent))))
+               (rx/pipe (rxo/distinct-contiguous))))
+
+        kbd-shift-s
+        (mf/with-memo []
+          (->> ms/keyboard
+               (rx/filter kbd/shift-key?)
+               (rx/filter (complement kbd/editing-event?))
+               (rx/map kbd/key-down-event?)
+               (rx/pipe (rxo/distinct-contiguous))))
+
+        kbd-z-s
+        (mf/with-memo []
+          (->> ms/keyboard
+               (rx/filter kbd/z?)
+               (rx/filter (complement kbd/editing-event?))
+               (rx/map kbd/key-down-event?)
+               (rx/pipe (rxo/distinct-contiguous))))]
+
+    (hooks/use-stream ms/keyboard-alt (partial reset! alt*))
+    (hooks/use-stream ms/keyboard-space (partial reset! space*))
+    (hooks/use-stream kbd-z-s (partial reset! z*))
+    (hooks/use-stream kbd-shift-s (partial reset! shift*))
+    (hooks/use-stream ms/keyboard-mod
+                      (fn [value]
+                        (reset! mod* value)
+                        ;; In mac after command+z there is no event
+                        ;; for the release of the z key
+                        (when-not ^boolean value
+                          (reset! z* false))))
+
+    (hooks/use-stream kbd-zoom-s
+                      (fn [kevent]
+                        (dom/prevent-default kevent)
+                        (st/emit!
+                         (if (or ^boolean (kbd/minus? kevent)
+                                 ^boolean (kbd/underscore? kevent))
+                           (dw/decrease-zoom)
+                           (dw/increase-zoom)))))))
+
 
 (defn group-empty-space?
   "Given a group `group-id` check if `hover-ids` contains any of its children. If it doesn't means
@@ -117,11 +163,11 @@
        ;; If there are no children in the hover-ids we're in the empty side
        (->> hover-ids
             (remove #(contains? #{:group :bool} (get-in objects [% :type])))
-            (some #(cph/is-parent? objects % group-id))
+            (some #(cfh/is-parent? objects % group-id))
             (not))))
 
 (defn setup-hover-shapes
-  [page-id move-stream objects transform selected mod? hover hover-ids hover-top-frame-id hover-disabled? focus zoom show-measures?]
+  [page-id move-stream objects transform selected mod? hover measure-hover hover-ids hover-top-frame-id hover-disabled? focus zoom show-measures?]
   (let [;; We use ref so we don't recreate the stream on a change
         zoom-ref (mf/use-ref zoom)
         mod-ref (mf/use-ref @mod?)
@@ -138,7 +184,7 @@
          (mf/deps page-id)
          (fn [point]
            (let [zoom (mf/ref-val zoom-ref)
-                 rect (grc/center->rect point (/ 5 zoom) (/ 5 zoom))]
+                 rect (grc/center->rect point (/ 5 zoom))]
 
              (if (mf/ref-val hover-disabled-ref)
                (rx/of nil)
@@ -220,15 +266,15 @@
                             (ctt/sort-z-index objects ids {:bottom-frames? mod?}))
 
              grouped? (fn [id]
-                        (and (cph/group-shape? objects id)
-                             (not (cph/mask-shape? objects id))))
+                        (and (cfh/group-shape? objects id)
+                             (not (cfh/mask-shape? objects id))))
 
              selected-with-parents
-             (into #{} (mapcat #(cph/get-parent-ids objects %)) selected)
+             (into #{} (mapcat #(cfh/get-parent-ids objects %)) selected)
 
              root-frame-with-data?
              #(as-> (get objects %) obj
-                (and (cph/root-frame? obj)
+                (and (cfh/root-frame? obj)
                      (d/not-empty? (:shapes obj))
                      (not (ctk/instance-head? obj))
                      (not (ctk/main-instance? obj))))
@@ -238,9 +284,6 @@
              (cond
                mod?
                (filter grouped?)
-
-               show-measures?
-               (filter #(group-empty-space? % objects ids))
 
                (not mod?)
                (filter #(or (root-frame-with-data? %)
@@ -252,20 +295,32 @@
              no-fill-nested-frames?
              (fn [id]
                (let [shape (get objects id)]
-                 (and (cph/frame-shape? shape)
-                      (not (cph/is-direct-child-of-root? shape))
+                 (and (cfh/frame-shape? shape)
+                      (not (cfh/is-direct-child-of-root? shape))
                       (empty? (get shape :fills)))))
 
              hover-shape
              (->> ids
                   (remove remove-id?)
-                  (remove (partial cph/hidden-parent? objects))
+                  (remove (partial cfh/hidden-parent? objects))
                   (remove #(and mod? (no-fill-nested-frames? %)))
                   (filter #(or (empty? focus) (cpf/is-in-focus? objects focus %)))
                   (first)
-                  (get objects))]
+                  (get objects))
+
+             ;; We keep track of a diferent shape for measures
+             measure-hover-shape
+             (when show-measures?
+               (->> ids
+                    (remove #(group-empty-space? % objects ids))
+                    (remove (partial cfh/hidden-parent? objects))
+                    (remove #(and mod? (no-fill-nested-frames? %)))
+                    (filter #(or (empty? focus) (cpf/is-in-focus? objects focus %)))
+                    (first)
+                    (get objects)))]
 
          (reset! hover hover-shape)
+         (reset! measure-hover measure-hover-shape)
          (reset! hover-ids ids))))))
 
 (defn setup-viewport-modifiers
@@ -287,8 +342,8 @@
   (let [all-frames             (mf/use-memo (mf/deps objects) #(ctt/get-root-frames-ids objects))
         selected-frames        (mf/use-memo (mf/deps selected) #(->> all-frames (filter selected)))
 
-        xf-selected-frame      (comp (remove cph/root-frame?)
-                                     (map #(cph/get-shape-id-root-frame objects %)))
+        xf-selected-frame      (comp (remove cfh/root-frame?)
+                                     (map #(cfh/get-shape-id-root-frame objects %)))
 
         selected-shapes-frames (mf/use-memo (mf/deps selected) #(into #{} xf-selected-frame selected))
 
@@ -312,7 +367,7 @@
        ;; - If no hovering over any frames we keep the previous active one
        ;; - Check always that the active frames are inside the vbox
 
-       (let [hover-ids? (set (->> @hover-ids (map #(cph/get-shape-id-root-frame objects %))))
+       (let [hover-ids? (set (->> @hover-ids (map #(cfh/get-shape-id-root-frame objects %))))
 
              is-active-frame?
              (fn [id]
@@ -359,12 +414,15 @@
 ;; this shortcuts outside the viewport?
 
 (defn setup-shortcuts
-  [path-editing? drawing-path? text-editing?]
+  [path-editing? drawing-path? text-editing? grid-editing?]
   (hooks/use-shortcuts ::workspace wsc/shortcuts)
   (mf/use-effect
-   (mf/deps path-editing? drawing-path?)
+   (mf/deps path-editing? drawing-path? grid-editing?)
    (fn []
      (cond
+       grid-editing?
+       (do (st/emit! (dsc/push-shortcuts ::grid gsc/shortcuts))
+           #(st/emit! (dsc/pop-shortcuts ::grid)))
        (or drawing-path? path-editing?)
        (do (st/emit! (dsc/push-shortcuts ::path psc/shortcuts))
            #(st/emit! (dsc/pop-shortcuts ::path)))

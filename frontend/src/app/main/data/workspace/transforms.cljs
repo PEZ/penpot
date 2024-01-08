@@ -9,6 +9,8 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
+   [app.common.files.changes-builder :as pcb]
+   [app.common.files.helpers :as cfh]
    [app.common.geom.matrix :as gmt]
    [app.common.geom.modifiers :as gm]
    [app.common.geom.point :as gpt]
@@ -17,8 +19,6 @@
    [app.common.geom.shapes.flex-layout :as gslf]
    [app.common.geom.shapes.grid-layout :as gslg]
    [app.common.math :as mth]
-   [app.common.pages.changes-builder :as pcb]
-   [app.common.pages.helpers :as cph]
    [app.common.types.component :as ctk]
    [app.common.types.container :as ctn]
    [app.common.types.modifiers :as ctm]
@@ -32,9 +32,12 @@
    [app.main.data.workspace.undo :as dwu]
    [app.main.snap :as snap]
    [app.main.streams :as ms]
+   [app.util.array :as array]
    [app.util.dom :as dom]
-   [beicon.core :as rx]
-   [potok.core :as ptk]))
+   [app.util.keyboard :as kbd]
+   [app.util.mouse :as mse]
+   [beicon.v2.core :as rx]
+   [potok.v2.core :as ptk]))
 
 ;; -- Helpers --------------------------------------------------------
 
@@ -42,13 +45,13 @@
 ;; for example, right will only grow in the x coordinate and left
 ;; will grow in the inverse of the x coordinate
 (def ^:private handler-multipliers
-  {:right        [ 1  0]
-   :bottom       [ 0  1]
+  {:right        [1  0]
+   :bottom       [0  1]
    :left         [-1  0]
-   :top          [ 0 -1]
-   :top-right    [ 1 -1]
+   :top          [0 -1]
+   :top-right    [1 -1]
    :top-left     [-1 -1]
-   :bottom-right [ 1  1]
+   :bottom-right [1  1]
    :bottom-left  [-1  1]})
 
 (defn- handler-resize-origin
@@ -107,7 +110,7 @@
   "Enter mouse resize mode, until mouse button is released."
   [handler ids shape]
   (letfn [(resize
-           [shape initial layout [point lock? center? point-snap]]
+            [shape initial layout [point lock? center? point-snap]]
             (let [{:keys [width height]} (:selrect shape)
                   {:keys [rotation]} shape
 
@@ -214,7 +217,9 @@
       ptk/WatchEvent
       (watch [_ state stream]
         (let [initial-position @ms/mouse-position
-              stopper (rx/filter ms/mouse-up? stream)
+              stopper (->> stream
+                           (rx/filter mse/mouse-event?)
+                           (rx/filter mse/mouse-up-event?))
               layout  (:workspace-layout state)
               page-id (:current-page-id state)
               focus   (:workspace-focus-selected state)
@@ -305,7 +310,10 @@
 
     ptk/WatchEvent
     (watch [_ _ stream]
-      (let [stoper          (rx/filter ms/mouse-up? stream)
+      (let [stoper          (->> stream
+                                 (rx/filter mse/mouse-event?)
+                                 (rx/filter mse/mouse-up-event?))
+
             group           (gsh/shapes->rect shapes)
             group-center    (grc/rect->center group)
             initial-angle   (gpt/angle @ms/mouse-position group-center)
@@ -326,10 +334,9 @@
                 angle))]
         (rx/concat
          (->> ms/mouse-position
-              (rx/with-latest vector ms/mouse-position-mod)
-              (rx/with-latest vector ms/mouse-position-shift)
+              (rx/with-latest-from ms/mouse-position-mod ms/mouse-position-shift)
               (rx/map
-               (fn [[[pos mod?] shift?]]
+               (fn [[pos mod? shift?]]
                  (let [delta-angle (calculate-angle pos mod? shift?)]
                    (dwm/set-rotation-modifiers delta-angle shapes group-center))))
               (rx/take-until stoper))
@@ -347,8 +354,8 @@
             objects (wsh/lookup-page-objects state page-id)
             shapes  (->> ids (map #(get objects %)))]
         (rx/concat
-          (rx/of (dwm/set-delta-rotation-modifiers rotation shapes))
-          (rx/of (dwm/apply-modifiers)))))))
+         (rx/of (dwm/set-delta-rotation-modifiers rotation shapes))
+         (rx/of (dwm/apply-modifiers)))))))
 
 
 ;; -- Move ----------------------------------------------------------
@@ -369,7 +376,10 @@
      (watch [_ state stream]
        (let [initial  (deref ms/mouse-position)
 
-             stopper  (rx/filter ms/mouse-up? stream)
+             stopper  (->> stream
+                           (rx/filter mse/mouse-event?)
+                           (rx/filter mse/mouse-up-event?))
+
              zoom    (get-in state [:workspace-local :zoom] 1)
 
              ;; We toggle the selection so we don't have to wait for the event
@@ -385,7 +395,7 @@
                 (rx/map #(gpt/length %))
                 (rx/filter #(> % (/ 10 zoom)))
                 (rx/take 1)
-                (rx/with-latest vector ms/mouse-position-alt)
+                (rx/with-latest-from ms/mouse-position-alt)
                 (rx/mapcat
                  (fn [[_ alt?]]
                    (rx/concat
@@ -443,19 +453,23 @@
              ids     (if (nil? ids) selected ids)
              shapes  (mapv #(get objects %) ids)
              duplicate-move-started? (get-in state [:workspace-local :duplicate-move-started?] false)
-             stopper (rx/filter ms/mouse-up? stream)
+
+             stopper (->> stream
+                          (rx/filter mse/mouse-event?)
+                          (rx/filter mse/mouse-up-event?))
+
              layout  (get state :workspace-layout)
              zoom    (get-in state [:workspace-local :zoom] 1)
              focus   (:workspace-focus-selected state)
 
              exclude-frames
              (into #{}
-                   (filter (partial cph/frame-shape? objects))
-                   (cph/selected-with-children objects selected))
+                   (filter (partial cfh/frame-shape? objects))
+                   (cfh/selected-with-children objects selected))
 
              exclude-frames-siblings
              (into exclude-frames
-                   (comp (mapcat (partial cph/get-siblings-ids objects))
+                   (comp (mapcat (partial cfh/get-siblings-ids objects))
                          (filter (partial ctl/any-layout-immediate-child-id? objects)))
                    selected)
 
@@ -466,22 +480,23 @@
                          ;; We send the nil first so the stream is not waiting for the first value
                          (rx/of nil)
                          (->> position
+                              ;; FIXME: performance throttle
                               (rx/throttle 20)
                               (rx/switch-map
                                (fn [pos]
                                  (->> (snap/closest-snap-move page-id shapes objects layout zoom focus pos)
-                                      (rx/map #(vector pos %)))))))]
+                                      (rx/map #(array pos %)))))))]
          (if (empty? shapes)
            (rx/of (finish-transform))
            (let [move-stream
                  (->> position
                       ;; We ask for the snap position but we continue even if the result is not available
-                      (rx/with-latest vector snap-delta)
+                      (rx/with-latest-from snap-delta)
 
                       ;; We try to use the previous snap so we don't have to wait for the result of the new
                       (rx/map snap/correct-snap-point)
 
-                      (rx/with-latest vector ms/mouse-position-mod)
+                      (rx/with-latest-from ms/mouse-position-mod)
 
                       (rx/map
                        (fn [[move-vector mod?]]
@@ -492,16 +507,16 @@
                                grid-layout?   (ctl/grid-layout? objects target-frame)
                                drop-index     (when flex-layout? (gslf/get-drop-index target-frame objects position))
                                cell-data      (when (and grid-layout? (not mod?)) (gslg/get-drop-cell target-frame objects position))]
-                           [move-vector target-frame drop-index cell-data])))
+                           (array move-vector target-frame drop-index cell-data))))
 
                       (rx/take-until stopper))]
 
              (rx/merge
               ;; Temporary modifiers stream
               (->> move-stream
-                   (rx/with-latest-from ms/mouse-position-shift)
+                   (rx/with-latest-from array/conj ms/mouse-position-shift)
                    (rx/map
-                    (fn [[[move-vector target-frame drop-index cell-data] shift?]]
+                    (fn [[move-vector target-frame drop-index cell-data shift?]]
                       (let [x-disp? (> (mth/abs (:x move-vector)) (mth/abs (:y move-vector)))
                             [move-vector snap-ignore-axis]
                             (cond
@@ -514,7 +529,7 @@
                               :else
                               [move-vector nil])
 
-                            nesting-loop? (some #(cph/components-nesting-loop? objects (:id %) target-frame) shapes)
+                            nesting-loop? (some #(cfh/components-nesting-loop? objects (:id %) target-frame) shapes)
                             is-component-copy? (ctk/in-component-copy? (get objects target-frame))]
 
                         (cond-> (dwm/create-modif-tree ids (ctm/move-modifiers move-vector))
@@ -524,15 +539,15 @@
                           (dwm/set-modifiers false false {:snap-ignore-axis snap-ignore-axis}))))))
 
               (->> move-stream
-                      (rx/with-latest-from ms/mouse-position-alt)
-                      (rx/filter (fn [[_ alt?]] alt?))
-                      (rx/take 1)
-                      (rx/mapcat
-                        (fn [[_ alt?]]
-                          (if (and (not duplicate-move-started?) alt?)
-                            (rx/of (start-move-duplicate from-position)
-                                   (dws/duplicate-selected false true))
-                          (rx/empty)))))
+                   (rx/with-latest-from ms/mouse-position-alt)
+                   (rx/filter (fn [[_ alt?]] alt?))
+                   (rx/take 1)
+                   (rx/mapcat
+                    (fn [[_ alt?]]
+                      (if (and (not duplicate-move-started?) alt?)
+                        (rx/of (start-move-duplicate from-position)
+                               (dws/duplicate-selected false true))
+                        (rx/empty)))))
 
               (->> move-stream
                    (rx/map (comp set-ghost-displacement first)))
@@ -544,8 +559,8 @@
                     (fn [[_ target-frame drop-index]]
                       (let [undo-id (js/Symbol)]
                         (rx/of (dwu/start-undo-transaction undo-id)
-                               (dwm/apply-modifiers {:undo-transation? false})
                                (move-shapes-to-frame ids target-frame drop-index)
+                               (dwm/apply-modifiers {:undo-transation? false})
                                (finish-transform)
                                (dwu/commit-undo-transaction undo-id))))))))))))))
 
@@ -578,7 +593,7 @@
               (->> children
                    ;; Add the position to move the children
                    (map (fn [id]
-                          (let [position (cph/get-position-on-parent objects id)]
+                          (let [position (cfh/get-position-on-parent objects id)]
                             [id (get-move-to-index parent-id position)])))
                    (sort-by second >)
                    (reduce (fn [changes [child-id index]]
@@ -613,9 +628,13 @@
                                        (ctl/swap-shapes id (:id next-cell)))))
                                  parent))]
                 (-> changes
-                    (pcb/update-shapes [(:id parent)] (fn [shape] (-> shape
-                                                                      (assoc :layout-grid-cells layout-grid-cells)
-                                                                      (ctl/assign-cells))))
+                    (pcb/update-shapes
+                     [(:id parent)]
+                     (fn [shape]
+                       (-> shape
+                           (assoc :layout-grid-cells layout-grid-cells)
+                           ;; We want the previous objects value
+                           (ctl/assign-cells objects))))
                     (pcb/reorder-grid-children [(:id parent)]))))
 
             changes
@@ -673,7 +692,8 @@
                      (rx/switch-map #(rx/merge
                                       (rx/timer 1000)
                                       (->> stream
-                                           (rx/filter ms/key-up?)
+                                           (rx/filter kbd/keyboard-event?)
+                                           (rx/filter kbd/key-up-event?)
                                            (rx/delay 250))))
                      (rx/take 1))
 
@@ -706,7 +726,7 @@
             selected (wsh/lookup-selected state {:omit-blocked? true})
             selected-shapes (->> selected (map (d/getf objects)))]
         (if (every? #(and (ctl/any-layout-immediate-child? objects %)
-                          (not (ctl/layout-absolute? %)))
+                          (not (ctl/position-absolute? %)))
                     selected-shapes)
           (rx/of (reorder-selected-layout-child direction))
           (rx/of (nudge-selected-shapes direction shift?)))))))
@@ -728,7 +748,7 @@
 
             cpos       (gpt/point (:x bbox) (:y bbox))
             pos        (gpt/point (or (:x position) (:x bbox))
-                               (or (:y position) (:y bbox)))
+                                  (or (:y position) (:y bbox)))
 
             delta      (gpt/subtract pos cpos)
 
@@ -771,7 +791,7 @@
             frame    (get objects frame-id)
             layout?  (:layout frame)
 
-            shapes (->> ids (cph/clean-loops objects) (keep lookup))
+            shapes (->> ids (cfh/clean-loops objects) (keep lookup))
 
             moving-shapes
             (cond->> shapes
@@ -782,12 +802,12 @@
               (remove #(and (= (:frame-id %) frame-id)
                             (not= (:parent-id %) frame-id))))
 
-            ordered-indexes (cph/order-by-indexed-shapes objects (map :id moving-shapes))
+            ordered-indexes (cfh/order-by-indexed-shapes objects (map :id moving-shapes))
             moving-shapes (map (d/getf objects) ordered-indexes)
 
             all-parents
             (reduce (fn [res id]
-                      (into res (cph/get-parent-ids objects id)))
+                      (into res (cfh/get-parent-ids objects id)))
                     (d/ordered-set)
                     ids)
 
@@ -796,7 +816,7 @@
               (let [all-ids   (into empty-parents ids)
                     contains? (partial contains? all-ids)
                     xform     (comp (map lookup)
-                                    (filter cph/group-shape?)
+                                    (filter cfh/group-shape?)
                                     (remove #(->> (:shapes %) (remove contains?) seq))
                                     (map :id))
                     parents   (into #{} xform all-parents)]
@@ -814,7 +834,7 @@
             moving-shapes
             (->> moving-shapes
                  (remove (fn [shape]
-                           (and (ctl/layout-absolute? shape)
+                           (and (ctl/position-absolute? shape)
                                 (= frame-id (:parent-id shape))))))
 
             frame-component
@@ -826,7 +846,7 @@
                         (let [shape-component (ctn/get-component-shape objects shape)]
                           (if (= (:id frame-component) (:id shape-component))
                             result
-                            (into result (cph/get-children-ids-with-self objects (:id shape)))))
+                            (into result (cfh/get-children-ids-with-self objects (:id shape)))))
                         result))
                     #{}
                     moving-shapes)
@@ -840,10 +860,21 @@
                 ;; Remove layout-item properties when moving a shape outside a layout
                 (cond-> (not (ctl/any-layout? objects frame-id))
                   (pcb/update-shapes moving-shapes-ids ctl/remove-layout-item-data))
-                (pcb/update-shapes moving-shapes-ids #(cond-> % (cph/frame-shape? %) (assoc :hide-in-viewer true)))
+                ;; Remove component-root property when moving a shape inside a component
+                (cond-> (ctn/get-instance-root objects frame)
+                  (pcb/update-shapes moving-shapes-ids #(dissoc % :component-root)))
+                ;; Add component-root property when moving a component outside a component
+                (cond-> (not (ctn/get-instance-root objects frame))
+                  (pcb/update-shapes moving-shapes-ids (fn [shape]
+                                                         (if (ctk/instance-head? shape)
+                                                           (assoc shape :component-root true)
+                                                           shape))))
+                (pcb/update-shapes moving-shapes-ids #(cond-> % (cfh/frame-shape? %) (assoc :hide-in-viewer true)))
                 (pcb/update-shapes shape-ids-to-detach ctk/detach-shape)
                 (pcb/change-parent frame-id moving-shapes drop-index)
-                (pcb/reorder-grid-children [frame-id])
+                (cond-> (ctl/grid-layout? objects frame-id)
+                  (-> (pcb/update-shapes [frame-id] ctl/assign-cell-positions {:with-objects? true})
+                      (pcb/reorder-grid-children [frame-id])))
                 (pcb/remove-objects empty-parents))]
 
         (when (and (some? frame-id) (d/not-empty? changes))

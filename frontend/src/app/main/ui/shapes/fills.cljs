@@ -9,16 +9,15 @@
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.geom.shapes :as gsh]
-   [app.config :as cfg]
+   [app.config :as cf]
    [app.main.ui.shapes.attrs :as attrs]
-   [app.main.ui.shapes.embed :as embed]
    [app.main.ui.shapes.gradients :as grad]
    [app.util.object :as obj]
    [rumext.v2 :as mf]))
 
 (def no-repeat-padding 1.05)
 
-(mf/defc fills*
+(mf/defc internal-fills
   {::mf/wrap-props false}
   [props]
   (let [shape      (unchecked-get props "shape")
@@ -36,39 +35,39 @@
         height     (dm/get-prop selrect :height)
 
         has-image? (or (some? metadata)
-                        (some? image))
+                       (some? image))
 
-        uri         (cond
-                      (some? metadata)
-                      (cfg/resolve-file-media metadata)
+        uri        (cond
+                     (some? metadata)
+                     (cf/resolve-file-media metadata)
 
-                      (some? image)
-                          (cfg/resolve-file-media image))
+                     (some? image)
+                     (cf/resolve-file-media image))
 
-        embed       (embed/use-data-uris [uri])
+        uris       (into [uri]
+                         (comp
+                          (keep :fill-image)
+                          (map cf/resolve-file-media))
+                         fills)
+
         transform   (gsh/transform-str shape)
-
-        ;; When tru e the image has not loaded yet
-        loading?    (and (some? uri)
-                         (not (contains? embed uri)))
 
         pat-props   #js {:patternUnits "userSpaceOnUse"
                          :x x
                          :y y
                          :width width
-                         :height height
-                         :data-loading loading?}
+                         :height height}
 
         pat-props   (if (= :path type)
-                     (obj/set! pat-props "patternTransform" transform)
-                     pat-props)]
+                      (obj/set! pat-props "patternTransform" transform)
+                      pat-props)]
 
     (for [[shape-index shape] (d/enumerate (or (:position-data shape) [shape]))]
       [:* {:key (dm/str shape-index)}
-       (for [[fill-index value] (reverse (d/enumerate fills))]
+       (for [[fill-index value] (reverse (d/enumerate (get shape :fills [])))]
          (when (some? (:fill-color-gradient value))
            (let [gradient  (:fill-color-gradient value)
-                 props #js {:id (dm/str "fill-color-gradient_" render-id "_" fill-index)
+                 props #js {:id (dm/str "fill-color-gradient-" render-id "-" fill-index)
                             :key (dm/str fill-index)
                             :gradient gradient
                             :shape shape}]
@@ -84,13 +83,23 @@
                             (-> (obj/set! "width" (* width no-repeat-padding))
                                 (obj/set! "height" (* height no-repeat-padding)))))
           [:g
-           (for [[fill-index value] (reverse (d/enumerate fills))]
+           (for [[fill-index value] (reverse (d/enumerate (get shape :fills [])))]
              (let [style (attrs/get-fill-style value fill-index render-id type)
                    props #js {:key (dm/str fill-index)
                               :width width
                               :height height
                               :style style}]
-               [:> :rect props]))
+               (if (:fill-image value)
+                 (let [uri (cf/resolve-file-media (:fill-image value))
+                       image-props #js {:id (dm/str "fill-image-" render-id "-" fill-index)
+                                        :href (get uris uri uri)
+                                        :preserveAspectRatio "xMidYMid slice"
+                                        :width width
+                                        :height height
+                                        :key (dm/str fill-index)
+                                        :opacity (:fill-opacity value)}]
+                   [:> :image image-props])
+                 [:> :rect props])))
 
            (when ^boolean has-image?
              [:g
@@ -101,7 +110,7 @@
                       :width (* width no-repeat-padding)
                       :height (* height no-repeat-padding)
                       :fill "none"}]
-              [:image {:href (or (:data-uri shape) (get embed uri uri))
+              [:image {:href uri
                        :preserveAspectRatio "none"
                        :x 0
                        :y 0
@@ -111,7 +120,6 @@
 (mf/defc fills
   {::mf/wrap-props false}
   [props]
-
   (let [shape     (unchecked-get props "shape")
         type      (dm/get-prop shape :type)
         image     (:fill-image shape)
@@ -121,5 +129,6 @@
               (or (= type :image)
                   (= type :text))
               (> (count fills) 1)
-              (some :fill-color-gradient fills))
-      [:> fills* props])))
+              (some :fill-color-gradient fills)
+              (some :fill-image fills))
+      [:> internal-fills props])))

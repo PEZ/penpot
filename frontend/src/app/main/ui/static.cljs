@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.static
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.main.store :as st]
    [app.main.ui.icons :as i]
@@ -19,52 +20,62 @@
   [props]
   (let [children (obj/get props "children")
         on-click (mf/use-callback #(set! (.-href globals/location) "/"))]
-    [:section.exception-layout
-     [:div.exception-header
-      {:on-click on-click}
-      i/logo]
-     [:div.exception-content
-      [:div.container children]]]))
+    [:section {:class (stl/css :exception-layout)}
+     [:button
+      {:class (stl/css :exception-header)
+       :on-click on-click}
+      i/logo-icon]
+     [:div {:class (stl/css :deco-before)} i/logo-error-screen]
+
+     [:div {:class (stl/css :exception-content)}
+      [:div {:class (stl/css :container)} children]]
+
+     [:div {:class (stl/css :deco-after)} i/logo-error-screen]]))
+
+(mf/defc invalid-token
+  []
+  [:> static-header {}
+   [:div {:class (stl/css :main-message)} (tr "errors.invite-invalid")]
+   [:div {:class (stl/css :desc-message)} (tr "errors.invite-invalid.info")]])
 
 (mf/defc not-found
   []
   [:> static-header {}
-   [:div.image i/icon-empty]
-   [:div.main-message (tr "labels.not-found.main-message")]
-   [:div.desc-message (tr "labels.not-found.desc-message")]])
+   [:div {:class (stl/css :main-message)} (tr "labels.not-found.main-message")]
+   [:div {:class (stl/css :desc-message)} (tr "labels.not-found.desc-message")]])
 
 (mf/defc bad-gateway
   []
-  [:> static-header {}
-   [:div.image i/icon-empty]
-   [:div.main-message (tr "labels.bad-gateway.main-message")]
-   [:div.desc-message (tr "labels.bad-gateway.desc-message")]
-   [:div.sign-info
-    [:a.btn-primary.btn-small
-     {:on-click (fn [] (st/emit! #(dissoc % :exception)))}
-     (tr "labels.retry")]]])
+  (let [handle-retry
+        (mf/use-callback
+         (fn [] (st/emit! (rt/assign-exception nil))))]
+    [:> static-header {}
+     [:div {:class (stl/css :main-message)} (tr "labels.bad-gateway.main-message")]
+     [:div {:class (stl/css :desc-message)} (tr "labels.bad-gateway.desc-message")]
+     [:div {:class (stl/css :sign-info)}
+      [:button {:on-click handle-retry} (tr "labels.retry")]]]))
 
 (mf/defc service-unavailable
   []
-  [:> static-header {}
-   [:div.image i/icon-empty]
-   [:div.main-message (tr "labels.service-unavailable.main-message")]
-   [:div.desc-message (tr "labels.service-unavailable.desc-message")]
-   [:div.sign-info
-    [:a.btn-primary.btn-small
-     {:on-click (fn [] (st/emit! #(dissoc % :exception)))}
-     (tr "labels.retry")]]])
+  (let [handle-retry
+        (mf/use-callback
+         (fn [] (st/emit! (rt/assign-exception nil))))]
+    [:> static-header {}
+     [:div {:class (stl/css :main-message)} (tr "labels.service-unavailable.main-message")]
+     [:div {:class (stl/css :desc-message)} (tr "labels.service-unavailable.desc-message")]
+     [:div {:class (stl/css :sign-info)}
+      [:button {:on-click handle-retry} (tr "labels.retry")]]]))
 
 (mf/defc internal-error
   []
-  [:> static-header {}
-   [:div.image i/icon-empty]
-   [:div.main-message (tr "labels.internal-error.main-message")]
-   [:div.desc-message (tr "labels.internal-error.desc-message")]
-   [:div.sign-info
-    [:a.btn-primary.btn-small
-     {:on-click (fn [] (st/emit! (rt/assign-exception nil)))}
-     (tr "labels.retry")]]])
+  (let [handle-retry
+        (mf/use-callback
+         (fn [] (st/emit! (rt/assign-exception nil))))]
+    [:> static-header {}
+     [:div {:class (stl/css :main-message)} (tr "labels.internal-error.main-message")]
+     [:div {:class (stl/css :desc-message)} (tr "labels.internal-error.desc-message")]
+     [:div {:class (stl/css :sign-info)}
+      [:button {:on-click handle-retry} (tr "labels.retry")]]]))
 
 (mf/defc exception-page
   [{:keys [data] :as props}]
@@ -79,4 +90,3 @@
     [:& service-unavailable]
 
     [:& internal-error]))
-

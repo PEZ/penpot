@@ -7,8 +7,9 @@
 (ns app.main.errors
   "Generic error handling"
   (:require
+   [app.common.exceptions :as ex]
    [app.common.pprint :as pp]
-   [app.common.schema :as sm]
+   [app.common.schema :as-alias sm]
    [app.main.data.messages :as msg]
    [app.main.data.modal :as modal]
    [app.main.data.users :as du]
@@ -19,22 +20,22 @@
    [app.util.storage :refer [storage]]
    [app.util.timers :as ts]
    [cuerdas.core :as str]
-   [potok.core :as ptk]))
+   [potok.v2.core :as ptk]))
 
 (defn- print-data!
   [data]
   (-> data
       (dissoc ::sm/explain)
-      (dissoc :hint)
+      (dissoc :explain)
       (dissoc ::trace)
       (dissoc ::instance)
       (pp/pprint {:width 70})))
 
 (defn- print-explain!
   [data]
-  (when-let [explain (::sm/explain data)]
-    (-> (sm/humanize-data explain)
-        (pp/pprint {:width 70}))))
+  (when-let [explain (or (ex/explain data)
+                         (:explain data))]
+    (js/console.log explain)))
 
 (defn- print-trace!
   [data]
@@ -48,6 +49,29 @@
     (catch :default _ nil)
     (finally
       (js/console.groupEnd message))))
+
+(defn print-cause!
+  [message cause]
+  (print-group! message (fn []
+                          (print-data! cause)
+                          (print-explain! cause)
+                          (print-trace! cause))))
+
+(defn print-error!
+  [cause]
+  (cond
+    (map? cause)
+    (print-cause! (:hint cause "Unexpected Error") cause)
+
+    (ex/error? cause)
+    (print-cause! (ex-message cause) (ex-data cause))
+
+    :else
+    (let [trace (.-stack cause)]
+      (print-cause! (ex-message cause)
+                    {:hint (ex-message cause)
+                     ::trace trace
+                     ::instance cause}))))
 
 (defn on-error
   "A general purpose error handler."
@@ -89,16 +113,29 @@
 ;; the user perspective a error flash message should be visualized but
 ;; user can continue operate on the application. Can happen in backend
 ;; and frontend.
+
 (defmethod ptk/handle-error :validation
-  [error]
-  (ts/schedule
-   #(st/emit! (msg/show {:content "Validation error"
-                         :type :error
-                         :timeout 3000})))
+  [{:keys [code] :as error}]
 
   (print-group! "Validation Error"
                 (fn []
-                  (print-data! error))))
+                  (print-data! error)
+                  (print-explain! error)))
+  (cond
+    (= code :invalid-paste-data)
+    (let [message (tr "errors.paste-data-validation")]
+      (st/async-emit!
+       (msg/show {:content message
+                  :type :error
+                  :timeout 3000})))
+
+    :else
+    (let [message (tr "errors.generic-validation")]
+      (st/async-emit!
+       (msg/show {:content message
+                  :type :error
+                  :timeout 3000})))))
+
 
 
 ;; This is a pure frontend error that can be caused by an active
@@ -162,6 +199,15 @@
   (ts/schedule
    #(st/emit! (rt/assign-exception error))))
 
+
+(defn- redirect-to-dashboard
+  []
+  (let [team-id    (:current-team-id @st/state)
+        project-id (:current-project-id @st/state)]
+    (if (and project-id team-id)
+      (st/emit! (rt/nav :dashboard-files {:team-id team-id :project-id project-id}))
+      (set! (.-href glob/location) ""))))
+
 (defmethod ptk/handle-error :restriction
   [{:keys [code] :as error}]
   (cond
@@ -176,38 +222,33 @@
       (st/emit! (modal/show {:type :alert :message message :on-accept on-accept})))
 
     (= :file-feature-mismatch code)
-    (let [message    (tr "errors.file-feature-mismatch" (:feature error))
-          team-id    (:current-team-id @st/state)
-          project-id (:current-project-id @st/state)
-          on-accept  #(if (and project-id team-id)
-                        (st/emit! (rt/nav :dashboard-files {:team-id team-id :project-id project-id}))
-                        (set! (.-href glob/location) ""))]
-      (st/emit! (modal/show {:type :alert :message message :on-accept on-accept})))
+    (let [message (tr "errors.file-feature-mismatch" (:feature error))]
+      (st/emit! (modal/show {:type :alert :message message :on-accept redirect-to-dashboard})))
 
     (= :feature-mismatch code)
-    (let [message    (tr "errors.feature-mismatch" (:feature error))
-          team-id    (:current-team-id @st/state)
-          project-id (:current-project-id @st/state)
-          on-accept  #(if (and project-id team-id)
-                        (st/emit! (rt/nav :dashboard-files {:team-id team-id :project-id project-id}))
-                        (set! (.-href glob/location) ""))]
-      (st/emit! (modal/show {:type :alert :message message :on-accept on-accept})))
+    (let [message (tr "errors.feature-mismatch" (:feature error))]
+      (st/emit! (modal/show {:type :alert :message message :on-accept redirect-to-dashboard})))
 
     (= :feature-not-supported code)
-    (let [message    (tr "errors.feature-not-supported" (:feature error))
-          team-id    (:current-team-id @st/state)
-          project-id (:current-project-id @st/state)
-          on-accept  #(if (and project-id team-id)
-                        (st/emit! (rt/nav :dashboard-files {:team-id team-id :project-id project-id}))
-                        (set! (.-href glob/location) ""))]
-      (st/emit! (modal/show {:type :alert :message message :on-accept on-accept})))
+    (let [message (tr "errors.feature-not-supported" (:feature error))]
+      (st/emit! (modal/show {:type :alert :message message :on-accept redirect-to-dashboard})))
+
+    (= :file-version-not-supported code)
+    (let [message (tr "errors.version-not-supported")]
+      (st/emit! (modal/show {:type :alert :message message :on-accept redirect-to-dashboard})))
 
     (= :max-quote-reached code)
     (let [message (tr "errors.max-quote-reached" (:target error))]
       (st/emit! (modal/show {:type :alert :message message})))
 
+    (or (= :paste-feature-not-enabled code)
+        (= :missing-features-in-paste-content code)
+        (= :paste-feature-not-supported code))
+    (let [message (tr "errors.feature-not-supported" (:feature error))]
+      (st/emit! (modal/show {:type :alert :message message})))
+
     :else
-    (ptk/handle-error {:type :server-error :data error})))
+    (print-cause! "Restriction Error" error)))
 
 ;; This happens when the backed server fails to process the
 ;; request. This can be caused by an internal assertion or any other
@@ -223,7 +264,22 @@
 
   (print-group! "Server Error"
                 (fn []
-                  (print-data! error))))
+                  (print-data! (dissoc error :data))
+
+                  (when-let [werror (:data error)]
+                    (cond
+                      (= :assertion (:type werror))
+                      (print-group! "Assertion Error"
+                                    (fn []
+                                      (print-data! werror)
+                                      (print-explain! werror)))
+
+                      :else
+                      (print-group! "Unexpected"
+                                    (fn []
+                                      (print-data! werror)
+                                      (print-explain! werror))))))))
+
 
 (defonce uncaught-error-handler
   (letfn [(is-ignorable-exception? [cause]

@@ -5,6 +5,7 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.main.ui.workspace.viewport.widgets
+  (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
@@ -231,8 +232,8 @@
 
         on-double-click
         (mf/use-callback
-          (mf/deps (:id frame))
-          #(st/emit! (dwi/start-rename-flow (:id flow))))
+         (mf/deps (:id frame))
+         #(st/emit! (dwi/start-rename-flow (:id flow))))
 
         on-pointer-enter
         (mf/use-callback
@@ -251,12 +252,14 @@
                      :width 100000
                      :height 24
                      :transform (vwu/text-transform flow-pos zoom)}
-     [:div.flow-badge {:class (dom/classnames :selected selected?)}
-      [:div.content {:on-pointer-down on-pointer-down
-                     :on-double-click on-double-click
-                     :on-pointer-enter on-pointer-enter
-                     :on-pointer-leave on-pointer-leave}
-       i/play
+     [:div {:class (stl/css-case :flow-badge true
+                                 :selected selected?)}
+      [:div {:class (stl/css :content)
+             :on-pointer-down on-pointer-down
+             :on-double-click on-double-click
+             :on-pointer-enter on-pointer-enter
+             :on-pointer-leave on-pointer-leave}
+       i/play-refactor
        [:span (:name flow)]]]]))
 
 (mf/defc frame-flows

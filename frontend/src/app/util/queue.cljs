@@ -55,12 +55,12 @@
 ;; NOTE: Right now there are no cases where we need to cancel a process
 ;;       but if we do, we can use this function
 #_(defn- cancel-process
-  [queue]
-  (l/dbg :hint "queue::cancel-process")
-  (let [timeout (unchecked-get queue "timeout")]
-    (when (some? timeout)
-      (js/clearTimeout timeout))
-    (unchecked-set queue "timeout" nil)))
+    [queue]
+    (l/dbg :hint "queue::cancel-process")
+    (let [timeout (unchecked-get queue "timeout")]
+      (when (some? timeout)
+        (js/clearTimeout timeout))
+      (unchecked-set queue "timeout" nil)))
 
 (defn- process
   [queue]
@@ -85,7 +85,15 @@
   (let [items (unchecked-get queue "items")]
     (.shift items)))
 
-(defn enqueue
+(defn enqueue-first
+  [queue item]
+  (assert (instance? Queue queue))
+  (let [items (unchecked-get queue "items")]
+    (.unshift items item)
+    (when-not (has-requested-process? queue)
+      (request-process queue (next-process-time queue)))))
+
+(defn enqueue-last
   [queue item]
   (assert (instance? Queue queue))
   (let [items (unchecked-get queue "items")]
@@ -97,5 +105,11 @@
   [queue item f]
   (assert (instance? Queue queue))
   (let [items (unchecked-get queue "items")]
-    (when-not (.findLast ^js items f)
-      (enqueue queue item))))
+    ;; If tag is "frame", then they are added to the front of the queue
+    ;; so that they are processed first, anything else is added to the
+    ;; end of the queue.
+    (if (= (unchecked-get item "tag") "frame")
+      (when-not (.find ^js items f)
+        (enqueue-first queue item))
+      (when-not (.findLast ^js items f)
+        (enqueue-last queue item)))))
